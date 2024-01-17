@@ -1,0 +1,9 @@
+name: RL_Assign1
+channels:
+  - defaults
+dependencies:
+  - gymnasium
+  - tensorflow
+  - numpy
+  - matplotlib
+  - tqdm
