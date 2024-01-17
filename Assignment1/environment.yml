@@ -3,8 +3,11 @@ channels:
   - defaults
 dependencies:
   - python==3.10
+  - pip
   - gymnasium
   - tensorflow
   - numpy
   - matplotlib
   - tqdm
+  - pip:
+      - ruff  # dev
