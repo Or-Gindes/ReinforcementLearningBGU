@@ -2,6 +2,7 @@ name: RL_Assign1
 channels:
   - defaults
 dependencies:
+  - python==3.10
   - gymnasium
   - tensorflow
   - numpy
