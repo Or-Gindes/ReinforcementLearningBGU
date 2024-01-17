@@ -3,10 +3,9 @@ This script is an implementation of an agent using the basic DQN algorithm
 Reinforcement Learning course - Assignment 1 - Section 2
 """
 
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List, Union
 import gymnasium
 import numpy as np
-import tensorflow as tf
 from tensorflow.keras import Sequential
 from tensorflow.keras.layers import Dense
 from tensorflow.keras.optimizers import Adam
@@ -17,7 +16,8 @@ import matplotlib.pyplot as plt
 
 ENVIRONMENT = "CartPole-v1"
 LEARNING_RATE = 0.001
-DQN_HIDDEN = (256, 64, 32)
+DQN_HIDDEN_3 = (256, 64, 32)
+DQN_HIDDEN_5 = (512, 256, 128, 64, 32)
 REPLAY_MEMORY_SIZE = 1e5
 
 M_EPISODES = 1000
@@ -32,22 +32,29 @@ EPSILON_MIN = 0.01
 class DQN:
     """This class implements the DQN neural network"""
 
-    def __init__(self, num_states: int, num_actions: int, lr: float = LEARNING_RATE,
-                 optimizer=Adam, loss=MSE, layers: Tuple = DQN_HIDDEN) -> None:
+    def __init__(
+            self,
+            num_states: int,
+            num_actions: int,
+            lr: float = LEARNING_RATE,
+            optimizer=Adam,
+            loss=MSE,
+            layers: Tuple[int, ...] = DQN_HIDDEN_3,
+    ) -> None:
         """
         :param num_states: number of states possible in the estimated environment
         :param num_actions: number of actions possible in the estimated environment
         :param lr: learning rate
         :param optimizer: tensorflow optimizer object
         :param loss: tensorflow loss object or a valid name of loss in string
-        :param layers: Tuple of layer sizes to build the model with
+        :param layers: Tuple of ints representing layer sizes to build the model with
         """
         self.num_states = num_states
         self.num_actions = num_actions
         self.lr = lr
         self._build_model(layers, optimizer, loss)
 
-    def _build_model(self, layers: Tuple, optimizer, loss) -> None:
+    def _build_model(self, layers: Tuple[int, ...], optimizer, loss) -> None:
         """
         Method to build the DQN model according to layers input
         The model is the approximation of the action-value function Q and is initialized by default with random weights
@@ -56,13 +63,13 @@ class DQN:
         :param loss: tensorflow loss object or a valid name of loss in string
         """
         model = Sequential()
-        input_layer = Dense(layers[0], input_dim=self.num_states, activation='relu')
+        input_layer = Dense(layers[0], input_dim=self.num_states, activation="relu")
         model.add(input_layer)
 
         for layer_size in layers[1:]:
-            model.add(Dense(units=layer_size, activation='relu'))
+            model.add(Dense(units=layer_size, activation="relu"))
 
-        model.add(Dense(self.num_actions, activation='linear'))
+        model.add(Dense(self.num_actions, activation="linear"))
         model.compile(loss=loss, optimizer=optimizer(learning_rate=self.lr))
         self.model = model
 
@@ -97,7 +104,14 @@ class ExperienceReplay:
         """
         self._memory_buffer = deque(maxlen=size)
 
-    def add(self, state: np.array, action: int, reward: float, next_state: np.array, terminated: bool) -> None:
+    def add(
+            self,
+            state: np.array,
+            action: int,
+            reward: float,
+            next_state: np.array,
+            terminated: bool,
+    ) -> None:
         """
         :param state: current state
         :param action: current action
@@ -107,7 +121,9 @@ class ExperienceReplay:
         """
         self._memory_buffer.append((state, action, reward, next_state, terminated))
 
-    def sample_batch(self, batch_size: int) -> Optional[Tuple]:
+    def sample_batch(
+            self, batch_size: int
+    ) -> Optional[Tuple[Union[np.array, int, float, bool]]]:
         """
         :param batch_size: int - size of batch to sample from the memory buffer
         :return: if there are enough samples to return (i.e. more than batch_size) sample randomly and return
@@ -119,8 +135,16 @@ class ExperienceReplay:
         return sample
 
 
-def train_agent(agent: DQN, target: DQN, env, gamma: float = DISCOUNT_FACTOR, replay_size: int = REPLAY_MEMORY_SIZE,
-                batch_size: int = BATCH_SIZE, epsilon: float = EPSILON, epsilon_decay: float = EPSILON_DECAY):
+def train_agent(
+        agent: DQN,
+        target: DQN,
+        env,
+        gamma: float = DISCOUNT_FACTOR,
+        replay_size: int = REPLAY_MEMORY_SIZE,
+        batch_size: int = BATCH_SIZE,
+        epsilon: float = EPSILON,
+        epsilon_decay: float = EPSILON_DECAY,
+) -> tuple[list[float], list[int]]:
     """
     :param agent: agent DQN
     :param target: target DQN
@@ -130,7 +154,8 @@ def train_agent(agent: DQN, target: DQN, env, gamma: float = DISCOUNT_FACTOR, re
     :param batch_size: size of batches to be sampled form the experience replay buffer
     :param epsilon: exploration-exploitation tradeoff - chance of selecting a random action
     :param epsilon_decay: rate of epsilon decay
-    :return:
+    :return: a tuple of lists. The first, a list of average loss value per episode.
+    The second, a list of rewards accumulated per episode
     """
     experience_replay = ExperienceReplay(replay_size)
     avg_episode_losses, episode_rewards = [], []
@@ -144,15 +169,15 @@ def train_agent(agent: DQN, target: DQN, env, gamma: float = DISCOUNT_FACTOR, re
         steps_since_update = 0
 
         while not terminated:
-            # execute action
+            # select action with prob epsilon of being random
             action = agent.sample_action(state, epsilon)
-            observation, reward, terminated, _ = env.step(action)
+            # execute action in the environment and observe new state and reward
+            next_state, reward, terminated, _ = env.step(action)
             episode_reward += reward
 
-            experience_replay.add(state, action, reward, observation, terminated)
-
-            # TODO: Make sure this part is inside the steps and not the episode loop
-            # query a mini batch from the experience memory buffer
+            # Store the transition in replay memory
+            experience_replay.add(state, action, reward, next_state, terminated)
+            # sample a minibatch of transitions from replay memory
             transitions_minibatch = experience_replay.sample_batch(batch_size)
             if not transitions_minibatch:
                 continue
@@ -163,21 +188,24 @@ def train_agent(agent: DQN, target: DQN, env, gamma: float = DISCOUNT_FACTOR, re
                 y = reward if terminated else reward + gamma * target.predict(next_state).max()
                 minibatch_states.append(state)
                 minibatch_y.append(y)
-            minibatch_states, minibatch_y = np.array(minibatch_states), np.array(minibatch_y)
+            minibatch_states, minibatch_y = (
+                np.array(minibatch_states),
+                np.array(minibatch_y),
+            )
 
-            # perform gradient decent
-            history = agent.model.fit(minibatch_states, minibatch_y, batch_size=batch_size)
-            loss.append(history.history['loss'][0])
+            # perform gradient decent step on MSE loss (model compiled with MSE)
+            history = agent.model.fit(
+                x=minibatch_states, y=minibatch_y, batch_size=batch_size
+            )
+            loss.append(history.history["loss"][0])
 
-            # TODO: Make sure this part is inside the steps and not the episode loop
             # if steps reached number of steps for update
+            steps_since_update += 1
             if steps_since_update == C_STEPS_UPDATE:
                 steps_since_update = 0
                 target.model.set_weights(agent.model.get_weights())
 
-            steps_since_update += 1
-
-        print(f'Episode: {episode + 1} | Loss: {loss} | Reward: {episode_reward}')
+        print(f"Episode: {episode + 1} | Loss: {loss:.2f} | Reward: {episode_reward:.2f}")
         # when the episode is finished, log the average loss of the episode
         avg_episode_losses.append(sum(loss) / len(loss))
         episode_rewards.append(episode_reward)
@@ -185,20 +213,20 @@ def train_agent(agent: DQN, target: DQN, env, gamma: float = DISCOUNT_FACTOR, re
     return avg_episode_losses, episode_rewards
 
 
-
-
-
-
 # TODO: Implement test_agent + rendering
 # def test_agent():
 
 
 def main():
+    # Load environment and check it state and action parameters
     env = gymnasium.make(ENVIRONMENT)
     n_states = env.observation_space.shape[0]
     n_actions = env.action_space.n
-    dqn_agent = DQN(n_states, n_actions)
-    dqn_target = DQN(n_states, n_actions)
+
+    # Build two DQN networks, the agent and the "fixed" target
+    layers = DQN_HIDDEN_3
+    dqn_agent = DQN(n_states, n_actions, lr=LEARNING_RATE, optimizer=Adam, loss=MSE, layers=layers)
+    dqn_target = DQN(n_states, n_actions, lr=LEARNING_RATE, optimizer=Adam, loss=MSE, layers=layers)
 
     train_agent(dqn_agent, dqn_target, env)
 
