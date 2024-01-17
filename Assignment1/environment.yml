@@ -6,6 +6,7 @@ dependencies:
   - pip
   - gymnasium
   - tensorflow
+  - tensorflow-gpu  # for gpu training
   - numpy
   - matplotlib
   - tqdm

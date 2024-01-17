@@ -91,7 +91,7 @@ class DQN:
         :param state: an array of floats describing the current environment state
         :return: q_values predicted from model which estimates the Q function
         """
-        q_values = self.model.predict(state.reshape(1, -1))
+        q_values = self.model.predict(state.reshape(1, -1), verbose=0)
         return q_values
 
 
@@ -102,7 +102,7 @@ class ExperienceReplay:
         """
         :param size: size of the deque (int)
         """
-        self._memory_buffer = deque(maxlen=size)
+        self._memory_buffer = deque(maxlen=int(size))
 
     def add(
             self,
@@ -144,7 +144,7 @@ def train_agent(
         batch_size: int = BATCH_SIZE,
         epsilon: float = EPSILON,
         epsilon_decay: float = EPSILON_DECAY,
-) -> tuple[list[float], list[int]]:
+) -> Tuple[List[float], List[int]]:
     """
     :param agent: agent DQN
     :param target: target DQN
@@ -157,11 +157,14 @@ def train_agent(
     :return: a tuple of lists. The first, a list of average loss value per episode.
     The second, a list of rewards accumulated per episode
     """
+    print(f"Agent training is underway:\n")
     experience_replay = ExperienceReplay(replay_size)
     avg_episode_losses, episode_rewards = [], []
+    # threshold_episode is the first episode where the agent obtains an average reward>=475 over 100 consecutive eps
+    threshold_episode = None
 
     for episode in range(M_EPISODES):
-        state = env.reset()
+        state, _ = env.reset()
         terminated = False
         episode_reward = 0
         epsilon = max(epsilon * epsilon_decay, EPSILON_MIN)
@@ -172,22 +175,27 @@ def train_agent(
             # select action with prob epsilon of being random
             action = agent.sample_action(state, epsilon)
             # execute action in the environment and observe new state and reward
-            next_state, reward, terminated, _ = env.step(action)
+            next_state, reward, terminated, _, _ = env.step(action)
             episode_reward += reward
 
             # Store the transition in replay memory
             experience_replay.add(state, action, reward, next_state, terminated)
+
+            # After the transition is stored, update current state to the next state S_t+1 = S_t
+            state = next_state
+
             # sample a minibatch of transitions from replay memory
             transitions_minibatch = experience_replay.sample_batch(batch_size)
             if not transitions_minibatch:
                 continue
 
             minibatch_states, minibatch_y = [], []
-            for state, action, reward, next_state, terminated in transitions_minibatch:
+            for state_j, action_j, reward_j, next_state_j, terminated_j in transitions_minibatch:
                 # if not terminated, get y from target DQN q-values for the next state
-                y = reward if terminated else reward + gamma * target.predict(next_state).max()
-                minibatch_states.append(state)
-                minibatch_y.append(y)
+                y_j = reward_j if terminated_j else reward_j + gamma * target.predict(next_state_j).max()
+                minibatch_states.append(state_j)
+                minibatch_y.append(y_j)
+
             minibatch_states, minibatch_y = (
                 np.array(minibatch_states),
                 np.array(minibatch_y),
@@ -195,7 +203,7 @@ def train_agent(
 
             # perform gradient decent step on MSE loss (model compiled with MSE)
             history = agent.model.fit(
-                x=minibatch_states, y=minibatch_y, batch_size=batch_size
+                x=minibatch_states, y=minibatch_y, batch_size=batch_size, verbose=0
             )
             loss.append(history.history["loss"][0])
 
@@ -205,16 +213,71 @@ def train_agent(
                 steps_since_update = 0
                 target.model.set_weights(agent.model.get_weights())
 
-        print(f"Episode: {episode + 1} | Loss: {loss:.2f} | Reward: {episode_reward:.2f}")
+        avg_epsiode_loss = sum(loss) / len(loss)
+        print(f"Episode: {episode + 1} | Loss: {avg_epsiode_loss:.2f} | Reward: {episode_reward:.2f}")
         # when the episode is finished, log the average loss of the episode
-        avg_episode_losses.append(sum(loss) / len(loss))
+        avg_episode_losses.append(avg_epsiode_loss)
         episode_rewards.append(episode_reward)
+
+        # Number of episodes until the agent obtains an average reward >= 475 over 100 consecutive episodes
+        if sum(episode_rewards[-100:]) / 100 >= 475.0:
+            threshold_episode = episode + 1
+
+    if threshold_episode:
+        print(f"Number of episodes to achieve average reward "
+              f"of at least 475 over 100 consecutive episodes: {threshold_episode}")
 
     return avg_episode_losses, episode_rewards
 
 
-# TODO: Implement test_agent + rendering
-# def test_agent():
+def test_agent(agent: DQN, env, render: bool = True):
+    """
+    Test the trained agent in env on a new episode and render the environment
+    :param agent: agent DQN
+    :param env: the environment in which the agent is tested
+    :param render: boolean parameter indicating whether to render the agent playing the environment
+    """
+    state = env.reset()
+    # The model is trained and doesn't require any more exploration when selecting actions in the environment
+    epsilon = 0
+    terminated = False
+    total_reward = 0
+    while not terminated:
+        # select action
+        action = agent.sample_action(state, epsilon)
+        # execute action in the environment and observe new state and reward
+        next_state, reward, terminated, _, _ = env.step(action)
+        total_reward += reward
+        if render:
+            env.render()
+
+        state = next_state
+
+    print(f"Score of the trained agent in a new episode = {total_reward}")
+
+
+# TODO: Play around with params and introduce a loop where we only plot at the end.
+#  plot all loss / rewards together and add legend with hyperparameters
+def plot_training_graphs(losses: List[float], rewards: List[int]):
+    """
+    Function plots the average losses and rewards recorded per training episode
+    :param losses: list of average losses per training episode
+    :param rewards: list of total rewards scored per training episode
+    """
+    # Plot losses -
+    plt.plot(x=range(len(losses)), y=losses)
+    plt.title("DQN - Average MSE Loss per Training Episode")
+    plt.xlabel("Episodes")
+    plt.ylabel("Average MSE Loss")
+    plt.savefig("Loss per Episode")
+
+    plt.clf()
+    # Plot rewards -
+    plt.plot(x=range(len(rewards)), y=rewards)
+    plt.title("DQN - Total Reward per Training Episode")
+    plt.xlabel("Episodes")
+    plt.ylabel("Total Reward")
+    plt.savefig("Reward per Episode")
 
 
 def main():
@@ -227,8 +290,13 @@ def main():
     layers = DQN_HIDDEN_3
     dqn_agent = DQN(n_states, n_actions, lr=LEARNING_RATE, optimizer=Adam, loss=MSE, layers=layers)
     dqn_target = DQN(n_states, n_actions, lr=LEARNING_RATE, optimizer=Adam, loss=MSE, layers=layers)
+    # Verify the Q-function is initialized the same in both agent and target
+    dqn_target.model.set_weights(dqn_agent.model.get_weights())
 
-    train_agent(dqn_agent, dqn_target, env)
+    training_episode_losses, training_episode_rewards = train_agent(dqn_agent, dqn_target, env)
+    test_agent(dqn_agent, env)
+
+    plot_training_graphs(training_episode_losses, training_episode_rewards)
 
 
 if __name__ == "__main__":
