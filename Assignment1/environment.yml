@@ -5,9 +5,9 @@ dependencies:
   - python>=3.10,<3.11
   - pip
   - gymnasium
+  - pytorch
   - numpy
   - matplotlib
   - tqdm
   - pip:
-      - tensorflow
       - ruff  # dev

@@ -3,14 +3,13 @@ This script is an implementation of an agent using the basic DQN algorithm
 Reinforcement Learning course - Assignment 1 - Section 2
 """
 import os
-from typing import Optional, Tuple, List, Union, SupportsFloat
+from typing import Optional, Tuple, List, Union, SupportsFloat, Any
 import gymnasium
 import numpy as np
-import tensorflow as tf
-from tensorflow.keras import Sequential
-from tensorflow.keras.layers import Dense
-from tensorflow.keras.optimizers import Adam
-from tensorflow.keras.losses import MSE
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import torch.nn.functional as F
 from collections import deque
 from tqdm import tqdm
 import random
@@ -18,7 +17,7 @@ import matplotlib.pyplot as plt
 
 ENVIRONMENT = "CartPole-v1"
 LEARNING_RATE = 0.001
-DQN_HIDDEN_3 = (512, 256, 64)
+DQN_HIDDEN_3 = (256, 128, 64)
 DQN_HIDDEN_5 = (512, 256, 128, 64, 32)
 REPLAY_MEMORY_SIZE = 1e6
 
@@ -31,70 +30,43 @@ EPSILON_DECAY = 0.9975
 EPSILON_MIN = 0.005
 
 
-class DQN:
+class DQN(nn.Module):
     """This class implements the DQN neural network"""
 
     def __init__(
             self,
             num_states: int,
             num_actions: int,
-            lr: float = LEARNING_RATE,
-            optimizer=Adam,
-            loss=MSE,
             layers: Tuple[int, ...] = DQN_HIDDEN_3,
     ) -> None:
         """
         :param num_states: number of states possible in the estimated environment
         :param num_actions: number of actions possible in the estimated environment
-        :param lr: learning rate
-        :param optimizer: tensorflow optimizer object
-        :param loss: tensorflow loss object or a valid name of loss in string
         :param layers: Tuple of ints representing layer sizes to build the model with
         """
+        super(DQN, self).__init__()
         self.num_states = num_states
         self.num_actions = num_actions
-        self.lr = lr
-        self._build_model(layers, optimizer, loss)
+        self._build_model(layers)
 
-    def _build_model(self, layers: Tuple[int, ...], optimizer, loss) -> None:
+    def _build_model(self, layers: Tuple[int, ...]) -> None:
         """
         Method to build the DQN model according to layers input
         The model is the approximation of the action-value function Q and is initialized by default with random weights
         :param layers: Tuple of layer sizes to build the model with
-        :param optimizer: tensorflow optimizer object or a valid name of optimizer in string
-        :param loss: tensorflow loss object or a valid name of loss in string
         """
-        model = Sequential()
-        input_layer = Dense(layers[0], input_dim=self.num_states, activation="relu")
-        model.add(input_layer)
+        self.input_layer = nn.Linear(self.num_states, layers[0])
+        self.hidden_layers = nn.ModuleList(
+            [nn.Linear(layers[i], layers[i + 1]) for i in range(len(layers) - 1)]
+        )
+        self.output_layer = nn.Linear(layers[-1], self.num_actions)
 
-        for layer_size in layers[1:]:
-            model.add(Dense(units=layer_size, activation="relu"))
-
-        model.add(Dense(self.num_actions, activation="linear"))
-        model.compile(loss=loss, optimizer=optimizer(learning_rate=self.lr))
-        self.model = model
-
-    def sample_action(self, state: np.array, epsilon: float) -> int:
-        """
-        with probability epsilon select random action otherwise select greedily according to q_values
-        :param state: an array of floats describing the current environment state
-        :param epsilon: exploration-exploitation tradeoff - chance of selecting a random action
-        :return: the number of the action that should be taken according to decaying ε-greedy
-        """
-        if np.random.rand() <= epsilon:
-            return np.random.randint(self.num_actions)
-
-        q_values = self.predict(state.reshape(1, -1))
-        return np.argmax(q_values[0])
-
-    def predict(self, state: np.array) -> np.array:
-        """Predict q-values using the Q_function
-        :param state: an array of floats describing the current environment state
-        :return: q_values predicted from model which estimates the Q function
-        """
-        q_values = self.model.predict(state, verbose=0)
-        return q_values
+    def forward(self, x):
+        x = F.relu(self.input_layer(x))
+        for layer in self.hidden_layers:
+            x = F.relu(layer(x))
+        x = self.output_layer(x)
+        return x
 
 
 class ExperienceReplay:
@@ -108,11 +80,11 @@ class ExperienceReplay:
 
     def add(
             self,
-            state: np.array,
-            action: int,
-            reward: SupportsFloat,
-            next_state: np.array,
-            terminated: bool,
+            state: torch.Tensor,
+            action: torch.Tensor,
+            reward: torch.Tensor,
+            next_state: torch.Tensor,
+            terminated: torch.Tensor,
     ) -> None:
         """
         :param state: current state
@@ -132,23 +104,28 @@ class ExperienceReplay:
             return
 
         sample = random.sample(self._memory_buffer, batch_size)
-        states, actions, rewards, next_states, terminated = tuple(map(np.array, zip(*sample)))
-        return states, actions, rewards, next_states, terminated
+        return sample
 
 
 class DeepQLearning:
     """This class is in charge of executing the DQN algorithm"""
 
-    def __init__(self, env=ENVIRONMENT, dqn_model=DQN, dqn_layers=DQN_HIDDEN_3, lr=LEARNING_RATE, optim=Adam, loss=MSE):
+    def __init__(self,
+                 env=ENVIRONMENT,
+                 dqn_model=DQN,
+                 dqn_layers=DQN_HIDDEN_3,
+                 lr=LEARNING_RATE,
+                 optimizer=optim.Adam,
+                 loss=nn.MSELoss):
         """
         :param env: the environment which the networks are learning
         :param dqn_model: The model used in the algorithm
         :param dqn_layers: how to build the model
         :param lr: learning rate for the model optimizer
-        :param optim: compatible optimizer class
+        :param optimizer: compatible optimizer class
         :param loss: compatible loss class
         """
-        self.setup_gpu()
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         # Load environment and check it state and action parameters
         self.env = gymnasium.make(env)
         self.n_states = self.env.observation_space.shape[0]
@@ -156,20 +133,34 @@ class DeepQLearning:
         self.dqn = dqn_model
         self.dqn_layers = dqn_layers
         self.lr = lr
-        self.optim = optim
+        self.optimizer = None
         self.loss = loss
 
-        self._build_dqn()
+        self._build_dqn(optimizer)
 
-    def _build_dqn(self):
+    def _build_dqn(self, optimizer):
         """Build Agent and Target deep q learning networks"""
         # Build two DQN networks, the agent and the "fixed" target
-        self.agent = self.dqn(self.n_states, self.n_actions, lr=self.lr, optimizer=self.optim, loss=self.loss,
-                              layers=self.dqn_layers)
-        self.target = self.dqn(self.n_states, self.n_actions, lr=self.lr, optimizer=self.optim, loss=self.loss,
-                               layers=self.dqn_layers)
+        self.agent = self.dqn(self.n_states, self.n_actions, layers=self.dqn_layers).to(self.device)
+        self.target = self.dqn(self.n_states, self.n_actions, layers=self.dqn_layers).to(self.device)
         # Verify the Q-function is initialized the same in both agent and target
-        self.target.model.set_weights(self.agent.model.get_weights())
+        self.target.load_state_dict(self.agent.state_dict())
+        self.optimizer = optimizer(self.agent.parameters(), lr=self.lr)
+
+    def sample_action(self, state: torch.Tensor, epsilon: float) -> torch.Tensor:
+        """
+        with probability epsilon select random action otherwise select greedily according to q_values
+        :param state: an array of floats describing the current environment state
+        :param epsilon: exploration-exploitation tradeoff - chance of selecting a random action
+        :return: the number of the action that should be taken according to decaying ε-greedy
+        """
+        if np.random.rand() <= epsilon:
+            return torch.tensor([[self.env.action_space.sample()]], device=self.device, dtype=torch.long)
+
+        with torch.nograd():
+            q_values = self.agent(state)
+        action = q_values.max(1).indices.view(1, 1)
+        return action
 
     def train_agent(
             self,
@@ -196,6 +187,7 @@ class DeepQLearning:
         tqdm_episodes = tqdm(range(0, M_EPISODES), desc="Episode:")
         for episode in tqdm_episodes:
             state, _ = self.env.reset()
+            state = torch.tensor(state, dtype=torch.float32, device=self.device).unsqueeze(0)
             terminated = False
             episode_reward = 0
             epsilon = max(epsilon * epsilon_decay, EPSILON_MIN)
@@ -204,10 +196,13 @@ class DeepQLearning:
 
             while not terminated:
                 # select action with prob epsilon of being random
-                action = self.agent.sample_action(state, epsilon)
+                action = self.sample_action(state, epsilon)
                 # execute action in the environment and observe new state and reward
-                next_state, reward, terminated, _, _ = self.env.step(action)
+                next_state, reward, terminated, _, _ = self.env.step(action.item())
                 episode_reward += reward
+                next_state = torch.tensor(next_state, dtype=torch.float32, device=self.device).unsqueeze(0)
+                reward = torch.tensor([reward], device=self.device)
+                terminated = torch.tensor([terminated], device=self.device)
 
                 # Store the transition in replay memory
                 experience_replay.add(state, action, reward, next_state, terminated)
@@ -222,29 +217,33 @@ class DeepQLearning:
 
                 # Unpack the minibatch into separate tensors
                 minibatch_states, minibatch_actions, minibatch_rewards, minibatch_next_states, minibatch_terminated = (
-                    transitions_minibatch)
-                agent_q_values = self.agent.predict(minibatch_states)
-                max_next_state_q_values = np.max(self.target.predict(minibatch_next_states), axis=1)
+                    list(zip(*transitions_minibatch)))
+                minibatch_states = torch.cat(minibatch_states)
+                minibatch_actions = torch.cat(minibatch_actions)
+                minibatch_rewards = torch.cat(minibatch_rewards)
+                minibatch_next_states = torch.cat(minibatch_next_states)
+                terminated_mask = torch.cat(minibatch_terminated)
 
-                minibatch_y = np.where(
-                    minibatch_terminated,
-                    minibatch_rewards,
-                    minibatch_rewards + gamma * max_next_state_q_values
-                )
-                agent_q_values[range(batch_size), minibatch_actions] = minibatch_y
+                agent_q_values = self.agent(minibatch_states).gather(1, minibatch_actions)
+                with torch.no_grad():
+                    max_next_state_q_values = self.target(minibatch_next_states).max(1).values
+
+                max_next_state_q_values[terminated_mask] = torch.zeros(len(minibatch_terminated), device=self.device)
+                expected_q_values = minibatch_rewards + (gamma * max_next_state_q_values)
 
                 # perform gradient decent step on MSE loss (model compiled with MSE)
-                history = self.agent.model.fit(
-                    x=minibatch_states, y=agent_q_values, batch_size=batch_size, verbose=0,
-                    use_multiprocessing=True, workers=os.cpu_count()
-                )
-                loss.append(history.history["loss"][0])
+                loss_value = self.loss(agent_q_values, expected_q_values.unsqueeze(1))
+                self.optimizer.zero_grad()
+                loss_value.backward()
+                # nn.utils.clip_grad_value_(policy_net.parameters(), 100)
+                self.optimizer.step()
+                loss.append(loss_value.item())
 
                 # if steps reached number of steps for update
                 steps_since_update += 1
                 if steps_since_update == C_STEPS_UPDATE:
                     steps_since_update = 0
-                    self.target.model.set_weights(self.agent.model.get_weights())
+                    self.target.model.load_state_dict(self.agent.model.state_dict())
 
             if loss:
                 avg_episode_loss = sum(loss) / len(loss)
@@ -280,7 +279,7 @@ class DeepQLearning:
         total_reward = 0
         while not terminated:
             # select action
-            action = self.agent.sample_action(state, epsilon)
+            action = self.sample_action(state, epsilon)
             # execute action in the environment and observe new state and reward
             next_state, reward, terminated, _, _ = self.env.step(action)
             total_reward += reward
@@ -290,18 +289,6 @@ class DeepQLearning:
             state = next_state
 
         print(f"Score of the trained agent in a new episode = {total_reward}")
-
-    @staticmethod
-    def setup_gpu():
-        gpus = tf.config.list_physical_devices('GPU')
-        if gpus:
-            try:
-                # memory growth needs to be the same across GPUs
-                for gpu in gpus:
-                    tf.config.experimental.set_memory_growth(gpu, True)
-                print("GPU setup success")
-            except RuntimeError as e:
-                print("Failed to setup GPU")
 
 
 # TODO: Play around with params and introduce a loop where we only plot at the end.
