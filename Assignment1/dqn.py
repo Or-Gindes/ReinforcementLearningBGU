@@ -11,6 +11,8 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 from collections import deque
+
+from torch import Tensor
 from tqdm import tqdm
 import random
 import matplotlib.pyplot as plt
@@ -95,7 +97,7 @@ class ExperienceReplay:
         """
         self._memory_buffer.append((state, action, reward, next_state, terminated))
 
-    def sample_batch(self, batch_size: int) -> Optional[Tuple[np.array, ...]]:
+    def sample_batch(self, batch_size: int) -> list[Tensor] | None:
         """
         :param batch_size: int - size of batch to sample from the memory buffer
         :return: if there are enough samples to return (i.e. more than batch_size) sample randomly and return
@@ -104,7 +106,7 @@ class ExperienceReplay:
             return
 
         sample = random.sample(self._memory_buffer, batch_size)
-        return sample
+        return [torch.cat(category) for category in list(zip(*sample))]
 
 
 class DeepQLearning:
@@ -134,7 +136,7 @@ class DeepQLearning:
         self.dqn_layers = dqn_layers
         self.lr = lr
         self.optimizer = None
-        self.loss = loss
+        self.loss = loss()
 
         self._build_dqn(optimizer)
 
@@ -157,7 +159,7 @@ class DeepQLearning:
         if np.random.rand() <= epsilon:
             return torch.tensor([[self.env.action_space.sample()]], device=self.device, dtype=torch.long)
 
-        with torch.nograd():
+        with torch.no_grad():
             q_values = self.agent(state)
         action = q_values.max(1).indices.view(1, 1)
         return action
@@ -217,18 +219,14 @@ class DeepQLearning:
 
                 # Unpack the minibatch into separate tensors
                 minibatch_states, minibatch_actions, minibatch_rewards, minibatch_next_states, minibatch_terminated = (
-                    list(zip(*transitions_minibatch)))
-                minibatch_states = torch.cat(minibatch_states)
-                minibatch_actions = torch.cat(minibatch_actions)
-                minibatch_rewards = torch.cat(minibatch_rewards)
-                minibatch_next_states = torch.cat(minibatch_next_states)
-                terminated_mask = torch.cat(minibatch_terminated)
+                    transitions_minibatch)
 
                 agent_q_values = self.agent(minibatch_states).gather(1, minibatch_actions)
                 with torch.no_grad():
                     max_next_state_q_values = self.target(minibatch_next_states).max(1).values
 
-                max_next_state_q_values[terminated_mask] = torch.zeros(len(minibatch_terminated), device=self.device)
+                max_next_state_q_values[minibatch_terminated] = torch.zeros(sum(minibatch_terminated),
+                                                                            device=self.device)
                 expected_q_values = minibatch_rewards + (gamma * max_next_state_q_values)
 
                 # perform gradient decent step on MSE loss (model compiled with MSE)
@@ -243,7 +241,7 @@ class DeepQLearning:
                 steps_since_update += 1
                 if steps_since_update == C_STEPS_UPDATE:
                     steps_since_update = 0
-                    self.target.model.load_state_dict(self.agent.model.state_dict())
+                    self.target.load_state_dict(self.agent.state_dict())
 
             if loss:
                 avg_episode_loss = sum(loss) / len(loss)
