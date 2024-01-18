@@ -2,13 +2,12 @@ name: RL_Assign1
 channels:
   - defaults
 dependencies:
-  - python==3.10
+  - python
   - pip
   - gymnasium
-  - tensorflow
   - tensorflow-gpu  # for gpu training
+  - tensorflow
   - numpy
   - matplotlib
-  - tqdm
   - pip:
       - ruff  # dev
