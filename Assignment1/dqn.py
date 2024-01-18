@@ -2,7 +2,7 @@
 This script is an implementation of an agent using the basic DQN algorithm
 Reinforcement Learning course - Assignment 1 - Section 2
 """
-
+import os
 from typing import Optional, Tuple, List, Union
 import gymnasium
 import numpy as np
@@ -203,7 +203,8 @@ def train_agent(
 
             # perform gradient decent step on MSE loss (model compiled with MSE)
             history = agent.model.fit(
-                x=minibatch_states, y=minibatch_y, batch_size=batch_size, verbose=0
+                x=minibatch_states, y=minibatch_y, batch_size=batch_size, verbose=0,
+                use_multiprocessing=True, workers=os.cpu_count()
             )
             loss.append(history.history["loss"][0])
 
@@ -213,10 +214,10 @@ def train_agent(
                 steps_since_update = 0
                 target.model.set_weights(agent.model.get_weights())
 
-        avg_epsiode_loss = sum(loss) / len(loss)
-        print(f"Episode: {episode + 1} | Loss: {avg_epsiode_loss:.2f} | Reward: {episode_reward:.2f}")
+        avg_episode_loss = sum(loss) / len(loss)
+        print(f"Episode: {episode + 1} | Loss: {avg_episode_loss:.2f} | Reward: {episode_reward:.2f}")
         # when the episode is finished, log the average loss of the episode
-        avg_episode_losses.append(avg_epsiode_loss)
+        avg_episode_losses.append(avg_episode_loss)
         episode_rewards.append(episode_reward)
 
         # Number of episodes until the agent obtains an average reward >= 475 over 100 consecutive episodes
@@ -237,7 +238,7 @@ def test_agent(agent: DQN, env, render: bool = True):
     :param env: the environment in which the agent is tested
     :param render: boolean parameter indicating whether to render the agent playing the environment
     """
-    state = env.reset()
+    state, _ = env.reset()
     # The model is trained and doesn't require any more exploration when selecting actions in the environment
     epsilon = 0
     terminated = False
@@ -258,18 +259,23 @@ def test_agent(agent: DQN, env, render: bool = True):
 
 # TODO: Play around with params and introduce a loop where we only plot at the end.
 #  plot all loss / rewards together and add legend with hyperparameters
-def plot_training_graphs(losses: List[float], rewards: List[int]):
+def plot_training_graphs(losses: List[float], rewards: List[int], results_dir: str = "DQN_graphs"):
     """
     Function plots the average losses and rewards recorded per training episode
     :param losses: list of average losses per training episode
     :param rewards: list of total rewards scored per training episode
+    :param results_dir: folder to save plots in
     """
+    full_path = os.path.join(os.getcwd(), results_dir)
+    if not os.path.exists(full_path):
+        os.mkdir(full_path)
+
     # Plot losses -
     plt.plot(x=range(len(losses)), y=losses)
     plt.title("DQN - Average MSE Loss per Training Episode")
     plt.xlabel("Episodes")
     plt.ylabel("Average MSE Loss")
-    plt.savefig("Loss per Episode")
+    plt.savefig(os.path.join(full_path, "Losses_per_Episode"))
 
     plt.clf()
     # Plot rewards -
@@ -277,7 +283,7 @@ def plot_training_graphs(losses: List[float], rewards: List[int]):
     plt.title("DQN - Total Reward per Training Episode")
     plt.xlabel("Episodes")
     plt.ylabel("Total Reward")
-    plt.savefig("Reward per Episode")
+    plt.savefig(os.path.join(full_path, "Rewards_per_Episode.png"))
 
 
 def main():
