@@ -22,13 +22,13 @@ DQN_HIDDEN_3 = (512, 256, 64)
 DQN_HIDDEN_5 = (512, 256, 128, 64, 32)
 REPLAY_MEMORY_SIZE = 1e6
 
-M_EPISODES = 7500
+M_EPISODES = 1000
 C_STEPS_UPDATE = 50
 DISCOUNT_FACTOR = 0.995
-BATCH_SIZE = 32
+BATCH_SIZE = 64
 EPSILON = 1
-EPSILON_DECAY = 0.999
-EPSILON_MIN = 0
+EPSILON_DECAY = 0.9975
+EPSILON_MIN = 0.005
 
 
 class DQN:
@@ -223,13 +223,19 @@ class DeepQLearning:
                 # Unpack the minibatch into separate tensors
                 minibatch_states, minibatch_actions, minibatch_rewards, minibatch_next_states, minibatch_terminated = (
                     transitions_minibatch)
+                agent_q_values = self.agent.predict(minibatch_states)
+                max_next_state_q_values = np.max(self.target.predict(minibatch_next_states), axis=1)
 
-                target_q_values = minibatch_rewards + gamma * np.amax(self.target.predict(minibatch_next_states), axis=1)
-                minibatch_y = np.where(minibatch_terminated, minibatch_rewards, target_q_values)
+                minibatch_y = np.where(
+                    minibatch_terminated,
+                    minibatch_rewards,
+                    minibatch_rewards + gamma * max_next_state_q_values
+                )
+                agent_q_values[:, minibatch_actions] = minibatch_y
 
                 # perform gradient decent step on MSE loss (model compiled with MSE)
                 history = self.agent.model.fit(
-                    x=minibatch_states, y=minibatch_y, batch_size=batch_size, verbose=0,
+                    x=minibatch_states, y=agent_q_values, batch_size=batch_size, verbose=0,
                     use_multiprocessing=True, workers=os.cpu_count()
                 )
                 loss.append(history.history["loss"][0])
