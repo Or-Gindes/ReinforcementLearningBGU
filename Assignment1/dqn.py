@@ -231,7 +231,7 @@ class DeepQLearning:
                     minibatch_rewards,
                     minibatch_rewards + gamma * max_next_state_q_values
                 )
-                agent_q_values[:, minibatch_actions] = minibatch_y
+                agent_q_values[range(batch_size), minibatch_actions] = minibatch_y
 
                 # perform gradient decent step on MSE loss (model compiled with MSE)
                 history = self.agent.model.fit(
