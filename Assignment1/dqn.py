@@ -86,10 +86,9 @@ class DQN:
             return np.random.randint(self.num_actions)
 
         q_values = self.predict(state.reshape(1, -1))
-        action = tf.argmax(q_values, axis=1).numpy()[0]
-        return action
+        return np.argmax(q_values[0])
 
-    def predict(self, state: tf.Tensor) -> tf.Tensor:
+    def predict(self, state: np.array) -> np.array:
         """Predict q-values using the Q_function
         :param state: an array of floats describing the current environment state
         :return: q_values predicted from model which estimates the Q function
@@ -124,9 +123,7 @@ class ExperienceReplay:
         """
         self._memory_buffer.append((state, action, reward, next_state, terminated))
 
-    def sample_batch(
-            self, batch_size: int
-    ) -> Optional[Tuple[Union[np.array, int, float, bool]]]:
+    def sample_batch(self, batch_size: int) -> Optional[Tuple[np.array, ...]]:
         """
         :param batch_size: int - size of batch to sample from the memory buffer
         :return: if there are enough samples to return (i.e. more than batch_size) sample randomly and return
@@ -135,7 +132,8 @@ class ExperienceReplay:
             return
 
         sample = random.sample(self._memory_buffer, batch_size)
-        return sample
+        states, actions, rewards, next_states, terminated = tuple(map(np.array, zip(*sample)))
+        return states, actions, rewards, next_states, terminated
 
 
 class DeepQLearning:
@@ -224,16 +222,10 @@ class DeepQLearning:
 
                 # Unpack the minibatch into separate tensors
                 minibatch_states, minibatch_actions, minibatch_rewards, minibatch_next_states, minibatch_terminated = (
-                    zip(*transitions_minibatch))
+                    transitions_minibatch)
 
-                minibatch_states = tf.convert_to_tensor(minibatch_states, dtype=tf.float32)
-                minibatch_actions = tf.convert_to_tensor(minibatch_actions, dtype=tf.int32)
-                minibatch_rewards = tf.convert_to_tensor(minibatch_rewards, dtype=tf.float32)
-                minibatch_next_states = tf.convert_to_tensor(minibatch_next_states, dtype=tf.float32)
-                minibatch_terminated = tf.convert_to_tensor(minibatch_terminated, dtype=tf.bool)
-
-                target_q_values = minibatch_rewards + gamma * tf.reduce_max(self.target.predict(minibatch_next_states), axis=1)
-                minibatch_y = tf.where(minibatch_terminated, minibatch_rewards, target_q_values)
+                target_q_values = minibatch_rewards + gamma * np.amax(self.target.predict(minibatch_next_states), axis=1)
+                minibatch_y = np.where(minibatch_terminated, minibatch_rewards, target_q_values)
 
                 # perform gradient decent step on MSE loss (model compiled with MSE)
                 history = self.agent.model.fit(
