@@ -75,7 +75,7 @@ class DQN:
         model.compile(loss=loss, optimizer=optimizer(learning_rate=self.lr))
         self.model = model
 
-    def sample_action(self, state: tf.tensor, epsilon: float) -> int:
+    def sample_action(self, state: np.array, epsilon: float) -> int:
         """
         with probability epsilon select random action otherwise select greedily according to q_values
         :param state: an array of floats describing the current environment state
@@ -85,10 +85,11 @@ class DQN:
         if np.random.rand() <= epsilon:
             return np.random.randint(self.num_actions)
 
-        q_values = self.predict(state)
-        return np.argmax(q_values[0])
+        q_values = self.predict(state.reshape(1, -1))
+        action = tf.argmax(q_values, axis=1).numpy()[0]
+        return action
 
-    def predict(self, state: tf.tensor) -> tf.tensor:
+    def predict(self, state: tf.Tensor) -> tf.Tensor:
         """Predict q-values using the Q_function
         :param state: an array of floats describing the current environment state
         :return: q_values predicted from model which estimates the Q function
