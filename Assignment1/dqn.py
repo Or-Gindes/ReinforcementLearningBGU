@@ -22,7 +22,7 @@ DQN_HIDDEN_3 = (512, 256, 64)
 DQN_HIDDEN_5 = (512, 256, 128, 64, 32)
 REPLAY_MEMORY_SIZE = 1e6
 
-M_EPISODES = 1000
+M_EPISODES = 5000
 C_STEPS_UPDATE = 50
 DISCOUNT_FACTOR = 0.995
 BATCH_SIZE = 64
@@ -248,15 +248,19 @@ class DeepQLearning:
 
             if loss:
                 avg_episode_loss = sum(loss) / len(loss)
-                tqdm_episodes.set_postfix(average_episode_loss=avg_episode_loss, episode_reward=episode_reward)
-                # print(f"Episode: {episode + 1} | Loss: {avg_episode_loss:.4f} | Reward: {episode_reward:.2f}")
                 # when the episode is finished, log the average loss of the episode
                 avg_episode_losses.append(avg_episode_loss)
                 episode_rewards.append(episode_reward)
 
-            # Number of episodes until the agent obtains an average reward >= 475 over 100 consecutive episodes
-            if not first_threshold_episode and sum(episode_rewards[-100:]) / 100 >= 475.0:
-                first_threshold_episode = episode + 1
+                average_reward_last_100 = sum(episode_rewards[-100:]) / 100
+                tqdm_episodes.set_postfix(
+                    average_episode_loss=avg_episode_loss,
+                    episode_reward=episode_reward,
+                    average_reward_last_100_episodes=average_reward_last_100
+                )
+                # Number of episodes until the agent obtains an average reward >= 475 over 100 consecutive episodes
+                if not first_threshold_episode and average_reward_last_100 >= 475.0:
+                    first_threshold_episode = episode + 1
 
         if first_threshold_episode:
             print(f"Number of episodes to achieve average reward "
@@ -314,7 +318,7 @@ def plot_training_graphs(losses: List[float], rewards: List[int], results_dir: s
         os.mkdir(full_path)
 
     # Plot losses -
-    plt.plot(x=range(len(losses)), y=losses)
+    plt.plot(range(len(losses)), losses)
     plt.title("DQN - Average MSE Loss per Training Episode")
     plt.xlabel("Episodes")
     plt.ylabel("Average MSE Loss")
@@ -322,7 +326,7 @@ def plot_training_graphs(losses: List[float], rewards: List[int], results_dir: s
 
     plt.clf()
     # Plot rewards -
-    plt.plot(x=range(len(rewards)), y=rewards)
+    plt.plot(range(len(rewards)), rewards)
     plt.title("DQN - Total Reward per Training Episode")
     plt.xlabel("Episodes")
     plt.ylabel("Total Reward")
