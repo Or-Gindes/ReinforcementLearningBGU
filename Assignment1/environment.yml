@@ -1,0 +1,13 @@
+name: RL_Assign1
+channels:
+  - defaults
+dependencies:
+  - python>=3.10,<3.11
+  - pip
+  - gymnasium
+  - pytorch
+  - numpy
+  - matplotlib
+  - tqdm
+  - pip:
+      - ruff  # dev
