@@ -120,7 +120,8 @@ class DeepQLearning:
             dqn_layers=DQN_HIDDEN_3,
             lr=LEARNING_RATE,
             optimizer=optim.Adam,
-            loss=nn.MSELoss
+            loss=nn.MSELoss,
+            device: torch.device = None
     ) -> None:
         """
         :param env: the environment which the networks are learning
@@ -129,11 +130,12 @@ class DeepQLearning:
         :param lr: learning rate for the model optimizer
         :param optimizer: compatible optimizer class
         :param loss: compatible loss class
+        :param device: "cpu" or "cuda" - device to train on
         """
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = device if device else "cuda"
         # Load environment and check it state and action parameters
         self.env = gymnasium.make(env)
-        self.test_env = gymnasium.make(env, render_mode="human")
+        self.render_env = gymnasium.make(env, render_mode="human")
         self.n_states = self.env.observation_space.shape[0]
         self.n_actions = self.env.action_space.n
         self.dqn = dqn_model
@@ -274,6 +276,7 @@ class DeepQLearning:
             print(f"Number of episodes to achieve average reward "
                   f"of at least 475 over 100 consecutive episodes: {first_threshold_episode}")
 
+        self.env.close()
         return avg_episode_losses, episode_rewards, first_threshold_episode
 
     def test_agent(self, render: bool = True) -> int:
@@ -281,24 +284,24 @@ class DeepQLearning:
         Test the trained agent in env on a new episode and render the environment
         :param render: boolean parameter indicating whether to render the agent playing the environment
         """
-        state, _ = self.test_env.reset()
+        env = self.render_env if render else self.env
+        state, _ = env.reset()
         # The model is trained and doesn't require any more exploration when selecting actions in the environment
         epsilon = 0
         terminated = False
         total_reward = 0
         while not terminated:
-            state = torch.tensor(
-                state, dtype=torch.float32, device=self.device
-            ).unsqueeze(0)
+            state = torch.tensor(state, dtype=torch.float32, device=self.device).unsqueeze(0)
             # select action
             action = self.sample_action(state, epsilon)
             # execute action in the environment and observe new state and reward
-            next_state, reward, terminated, _, _ = self.test_env.step(action.item())
+            next_state, reward, terminated, _, _ = env.step(action.item())
             total_reward += reward
-            if render:
-                self.test_env.render()
 
             state = next_state
+            if total_reward > 1000:
+                break
+        env.close()
         return total_reward
         # print(f"Score of the trained agent in a new episode = {total_reward}")
 
@@ -320,27 +323,28 @@ def plot_training_graphs(
     if not os.path.exists(full_path):
         os.mkdir(full_path)
 
+    figsize = (20, 12)
     # Plot losses
-    plt.figure(figsize=(20, 12))
+    plt.figure(figsize=figsize)
     for i, losses in enumerate(losses_list):
         plt.plot(range(len(losses)), losses, label=iteration_names[i])
 
     plt.title("DQN - Average MSE Loss per Training Episode")
     plt.xlabel("Episodes")
     plt.ylabel("Average MSE Loss")
-    plt.legend(loc="upper right", bbox_to_anchor=(1.05, 1))
+    plt.legend(loc='upper left', bbox_to_anchor=(0, 1))
     plt.savefig(os.path.join(full_path, "Losses_per_Episode.png"))
     plt.clf()
 
     # Plot rewards
-    plt.figure(figsize=(20, 12))
+    plt.figure(figsize=figsize)
     for i, rewards in enumerate(rewards_list):
         plt.plot(range(len(rewards)), rewards, label=iteration_names[i])
 
     plt.title("DQN - Total Reward per Training Episode")
     plt.xlabel("Episodes")
     plt.ylabel("Total Reward")
-    plt.legend(loc="upper right", bbox_to_anchor=(1.05, 1))
+    plt.legend(loc='upper left', bbox_to_anchor=(0, 1))
     plt.savefig(os.path.join(full_path, "Rewards_per_Episode.png"))
 
 
@@ -352,6 +356,13 @@ def parse_config(file_path):
 
 
 def main():
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+        print("GPU device detected, training on GPU")
+    else:
+        device = torch.device("cpu")
+        print("Couldn't detect GPU, defaulting to CPU for training")
+
     config_path = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "dqn_configs.json"
     )
@@ -364,7 +375,7 @@ def main():
     for config_number, (conf_name, conf_params) in enumerate(
             config["training_hyperparams"].items()
     ):
-        print(f"Testing config {config_number + 1} of {n_configs}")
+        print(f"\nTesting config {config_number + 1} of {n_configs}")
         for architecture_name, layers in config["dqn_layers"].items():
             dqn = DeepQLearning(
                 env=config["environment"],
@@ -373,6 +384,7 @@ def main():
                 lr=conf_params["learning_rate"],
                 optimizer=optim.Adam,
                 loss=nn.MSELoss,
+                device=device
             )
             avg_episode_losses, episode_rewards, convergence_episode = dqn.train_agent(
                 episode_count=config["m_episodes"],
@@ -384,14 +396,14 @@ def main():
             )
             config_loss.append(avg_episode_losses)
             config_rewards.append(episode_rewards)
-            test_reward = dqn.test_agent()
+            test_reward = dqn.test_agent(render=False)
             config_names.append(
-                "_".join(
+                "__".join(
                     [
                         architecture_name,
                         conf_name,
                         "config",
-                        f"test_reward={test_reward}",
+                        f"test_reward={test_reward if test_reward<=1000 else '> 1000'}",
                         f"convergence_episode={convergence_episode}",
                     ]
                 )

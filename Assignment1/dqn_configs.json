@@ -1,7 +1,7 @@
 {
   "environment": "CartPole-v1",
   "replay_memory_size": 1e6,
-  "m_episodes": 500,
+  "m_episodes": 5000,
   "dqn_layers": {
     "n_hidden_3": [128, 64, 32],
     "n_hidden_5": [512, 256, 128, 64, 32]
@@ -27,7 +27,7 @@
     },
     "faster_target_updates": {
       "learning_rate": 0.001,
-      "c_steps_update": 20,
+      "c_steps_update": 10,
       "discount_factor": 0.995,
       "batch_size": 64,
       "epsilon": 1,
