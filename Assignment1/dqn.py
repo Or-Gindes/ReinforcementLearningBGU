@@ -3,7 +3,8 @@ This script is an implementation of an agent using the basic DQN algorithm
 Reinforcement Learning course - Assignment 1 - Section 2
 """
 import os
-from typing import Optional, Tuple, List, Union, SupportsFloat, Any
+import json
+from typing import Tuple, List
 import gymnasium
 import numpy as np
 import torch
@@ -112,13 +113,15 @@ class ExperienceReplay:
 class DeepQLearning:
     """This class is in charge of executing the DQN algorithm"""
 
-    def __init__(self,
-                 env=ENVIRONMENT,
-                 dqn_model=DQN,
-                 dqn_layers=DQN_HIDDEN_3,
-                 lr=LEARNING_RATE,
-                 optimizer=optim.Adam,
-                 loss=nn.MSELoss):
+    def __init__(
+            self,
+            env=ENVIRONMENT,
+            dqn_model=DQN,
+            dqn_layers=DQN_HIDDEN_3,
+            lr=LEARNING_RATE,
+            optimizer=optim.Adam,
+            loss=nn.MSELoss
+    ) -> None:
         """
         :param env: the environment which the networks are learning
         :param dqn_model: The model used in the algorithm
@@ -130,6 +133,7 @@ class DeepQLearning:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         # Load environment and check it state and action parameters
         self.env = gymnasium.make(env)
+        self.test_env = gymnasium.make(env, render_mode="human")
         self.n_states = self.env.observation_space.shape[0]
         self.n_actions = self.env.action_space.n
         self.dqn = dqn_model
@@ -166,13 +170,15 @@ class DeepQLearning:
 
     def train_agent(
             self,
+            episode_count: int = M_EPISODES,
             gamma: float = DISCOUNT_FACTOR,
             replay_size: int = REPLAY_MEMORY_SIZE,
             batch_size: int = BATCH_SIZE,
             epsilon: float = EPSILON,
             epsilon_decay: float = EPSILON_DECAY,
-    ) -> Tuple[List[float], List[int]]:
+    ) -> Tuple[List[float], List[int], int]:
         """
+        :param episode_count: Number of episodes to train for
         :param gamma: discount factor
         :param replay_size: size of the experience replay buffer
         :param batch_size: size of batches to be sampled form the experience replay buffer
@@ -186,7 +192,7 @@ class DeepQLearning:
         # first_threshold_episode is the first episode where the agent obtains criteria
         first_threshold_episode = None
 
-        tqdm_episodes = tqdm(range(0, M_EPISODES), desc="Episode:")
+        tqdm_episodes = tqdm(range(0, episode_count), desc="Episode:")
         for episode in tqdm_episodes:
             state, _ = self.env.reset()
             state = torch.tensor(state, dtype=torch.float32, device=self.device).unsqueeze(0)
@@ -218,8 +224,13 @@ class DeepQLearning:
                     continue
 
                 # Unpack the minibatch into separate tensors
-                minibatch_states, minibatch_actions, minibatch_rewards, minibatch_next_states, minibatch_terminated = (
-                    transitions_minibatch)
+                (
+                    minibatch_states,
+                    minibatch_actions,
+                    minibatch_rewards,
+                    minibatch_next_states,
+                    minibatch_terminated,
+                ) = transitions_minibatch
 
                 agent_q_values = self.agent(minibatch_states).gather(1, minibatch_actions)
                 with torch.no_grad():
@@ -263,68 +274,130 @@ class DeepQLearning:
             print(f"Number of episodes to achieve average reward "
                   f"of at least 475 over 100 consecutive episodes: {first_threshold_episode}")
 
-        return avg_episode_losses, episode_rewards
+        return avg_episode_losses, episode_rewards, first_threshold_episode
 
-    def test_agent(self, render: bool = True):
+    def test_agent(self, render: bool = True) -> int:
         """
         Test the trained agent in env on a new episode and render the environment
         :param render: boolean parameter indicating whether to render the agent playing the environment
         """
-        state, _ = self.env.reset()
-        state = torch.tensor(state, dtype=torch.float32, device=self.device).unsqueeze(0)
+        state, _ = self.test_env.reset()
         # The model is trained and doesn't require any more exploration when selecting actions in the environment
         epsilon = 0
         terminated = False
         total_reward = 0
         while not terminated:
+            state = torch.tensor(
+                state, dtype=torch.float32, device=self.device
+            ).unsqueeze(0)
             # select action
             action = self.sample_action(state, epsilon)
             # execute action in the environment and observe new state and reward
-            next_state, reward, terminated, _, _ = self.env.step(action.item())
+            next_state, reward, terminated, _, _ = self.test_env.step(action.item())
             total_reward += reward
             if render:
-                self.env.render()
+                self.test_env.render()
 
             state = next_state
+        return total_reward
+        # print(f"Score of the trained agent in a new episode = {total_reward}")
 
-        print(f"Score of the trained agent in a new episode = {total_reward}")
 
-
-# TODO: Play around with params and introduce a loop where we only plot at the end.
-#  plot all loss / rewards together and add legend with hyperparameters
-def plot_training_graphs(losses: List[float], rewards: List[int], results_dir: str = "DQN_graphs"):
+def plot_training_graphs(
+        losses_list: List[List[float]],
+        rewards_list: List[List[int]],
+        iteration_names: List[str],
+        results_dir: str = "DQN_graphs",
+):
     """
-    Function plots the average losses and rewards recorded per training episode
-    :param losses: list of average losses per training episode
-    :param rewards: list of total rewards scored per training episode
-    :param results_dir: folder to save plots in
+    Function plots the average losses and rewards recorded per training episode for multiple iterations
+    :param losses_list: List of lists, where each inner list contains average losses per training episode for an iteration
+    :param rewards_list: List of lists, where each inner list contains total rewards per training episode for an iteration
+    :param iteration_names: List of names for each training iteration
+    :param results_dir: Folder to save plots in
     """
     full_path = os.path.join(os.getcwd(), results_dir)
     if not os.path.exists(full_path):
         os.mkdir(full_path)
 
-    # Plot losses -
-    plt.plot(range(len(losses)), losses)
+    # Plot losses
+    plt.figure(figsize=(20, 12))
+    for i, losses in enumerate(losses_list):
+        plt.plot(range(len(losses)), losses, label=iteration_names[i])
+
     plt.title("DQN - Average MSE Loss per Training Episode")
     plt.xlabel("Episodes")
     plt.ylabel("Average MSE Loss")
-    plt.savefig(os.path.join(full_path, "Losses_per_Episode"))
-
+    plt.legend(loc="upper right", bbox_to_anchor=(1.05, 1))
+    plt.savefig(os.path.join(full_path, "Losses_per_Episode.png"))
     plt.clf()
-    # Plot rewards -
-    plt.plot(range(len(rewards)), rewards)
+
+    # Plot rewards
+    plt.figure(figsize=(20, 12))
+    for i, rewards in enumerate(rewards_list):
+        plt.plot(range(len(rewards)), rewards, label=iteration_names[i])
+
     plt.title("DQN - Total Reward per Training Episode")
     plt.xlabel("Episodes")
     plt.ylabel("Total Reward")
+    plt.legend(loc="upper right", bbox_to_anchor=(1.05, 1))
     plt.savefig(os.path.join(full_path, "Rewards_per_Episode.png"))
 
 
+def parse_config(file_path):
+    with open(file_path, "r") as file:
+        config = json.load(file)
+
+    return config
+
+
 def main():
-    # TODO: Read training configuration and generate multiple graphs
-    dqn = DeepQLearning()
-    avg_episode_losses, episode_rewards = dqn.train_agent()
-    plot_training_graphs(avg_episode_losses, episode_rewards)
-    dqn.test_agent()
+    config_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "dqn_configs.json"
+    )
+    config = parse_config(config_path)
+
+    config_loss = []
+    config_rewards = []
+    config_names = []
+    n_configs = len(config["training_hyperparams"].keys())
+    for config_number, (conf_name, conf_params) in enumerate(
+            config["training_hyperparams"].items()
+    ):
+        print(f"Testing config {config_number + 1} of {n_configs}")
+        for architecture_name, layers in config["dqn_layers"].items():
+            dqn = DeepQLearning(
+                env=config["environment"],
+                dqn_model=DQN,
+                dqn_layers=layers,
+                lr=conf_params["learning_rate"],
+                optimizer=optim.Adam,
+                loss=nn.MSELoss,
+            )
+            avg_episode_losses, episode_rewards, convergence_episode = dqn.train_agent(
+                episode_count=config["m_episodes"],
+                gamma=conf_params["discount_factor"],
+                replay_size=config["replay_memory_size"],
+                batch_size=conf_params["batch_size"],
+                epsilon=conf_params["epsilon"],
+                epsilon_decay=conf_params["epsilon_decay"],
+            )
+            config_loss.append(avg_episode_losses)
+            config_rewards.append(episode_rewards)
+            test_reward = dqn.test_agent()
+            config_names.append(
+                "_".join(
+                    [
+                        architecture_name,
+                        conf_name,
+                        "config",
+                        f"test_reward={test_reward}",
+                        f"convergence_episode={convergence_episode}",
+                    ]
+                )
+            )
+
+    plot_training_graphs(config_loss, config_rewards, config_names)
 
 
 if __name__ == "__main__":
