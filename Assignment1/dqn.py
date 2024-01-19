@@ -271,6 +271,7 @@ class DeepQLearning:
         :param render: boolean parameter indicating whether to render the agent playing the environment
         """
         state, _ = self.env.reset()
+        state = torch.tensor(state, dtype=torch.float32, device=self.device).unsqueeze(0)
         # The model is trained and doesn't require any more exploration when selecting actions in the environment
         epsilon = 0
         terminated = False
@@ -279,7 +280,7 @@ class DeepQLearning:
             # select action
             action = self.sample_action(state, epsilon)
             # execute action in the environment and observe new state and reward
-            next_state, reward, terminated, _, _ = self.env.step(action)
+            next_state, reward, terminated, _, _ = self.env.step(action.item())
             total_reward += reward
             if render:
                 self.env.render()
