@@ -1,0 +1,65 @@
+{
+  "environment": "CartPole-v1",
+  "replay_memory_size": 1e6,
+  "m_episodes": 500,
+  "dqn_layers": {
+    "n_hidden_3": [128, 64, 32],
+    "n_hidden_5": [512, 256, 128, 64, 32]
+  },
+  "training_hyperparams": {
+    "base": {
+      "learning_rate": 0.001,
+      "c_steps_update": 50,
+      "discount_factor": 0.995,
+      "batch_size": 64,
+      "epsilon": 1,
+      "epsilon_decay": 0.9975,
+      "epsilon_min": 0.005
+    },
+    "increased_lr": {
+      "learning_rate": 0.01,
+      "c_steps_update": 50,
+      "discount_factor": 0.995,
+      "batch_size": 64,
+      "epsilon": 1,
+      "epsilon_decay": 0.9975,
+      "epsilon_min": 0.005
+    },
+    "faster_target_updates": {
+      "learning_rate": 0.001,
+      "c_steps_update": 20,
+      "discount_factor": 0.995,
+      "batch_size": 64,
+      "epsilon": 1,
+      "epsilon_decay": 0.9975,
+      "epsilon_min": 0.005
+    },
+    "reduced_gamma": {
+      "learning_rate": 0.001,
+      "c_steps_update": 50,
+      "discount_factor": 0.85,
+      "batch_size": 64,
+      "epsilon": 1,
+      "epsilon_decay": 0.9975,
+      "epsilon_min": 0.005
+    },
+    "lower_batch_size": {
+      "learning_rate": 0.001,
+      "c_steps_update": 50,
+      "discount_factor": 0.995,
+      "batch_size": 8,
+      "epsilon": 1,
+      "epsilon_decay": 0.9975,
+      "epsilon_min": 0.005
+    },
+    "less_exploration": {
+      "learning_rate": 0.001,
+      "c_steps_update": 50,
+      "discount_factor": 0.995,
+      "batch_size": 64,
+      "epsilon": 1,
+      "epsilon_decay": 0.99,
+      "epsilon_min": 0.005
+    }
+  }
+}
