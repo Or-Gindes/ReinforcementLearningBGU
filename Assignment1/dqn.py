@@ -87,16 +87,16 @@ class ExperienceReplay:
             action: torch.Tensor,
             reward: torch.Tensor,
             next_state: torch.Tensor,
-            terminated: torch.Tensor,
+            done: torch.Tensor,
     ) -> None:
         """
         :param state: current state
         :param action: current action
         :param reward: reward for current (state, action) pair
         :param next_state: state which the current (state, action) pair lead to
-        :param terminated: whether the simulation was completed by the action
+        :param done: whether the simulation was completed by the action
         """
-        self._memory_buffer.append((state, action, reward, next_state, terminated))
+        self._memory_buffer.append((state, action, reward, next_state, done))
 
     def sample_batch(self, batch_size: int) -> list[Tensor] | None:
         """
@@ -198,24 +198,26 @@ class DeepQLearning:
         for episode in tqdm_episodes:
             state, _ = self.env.reset()
             state = torch.tensor(state, dtype=torch.float32, device=self.device).unsqueeze(0)
-            terminated = False
+            done = False
             episode_reward = 0
             epsilon = max(epsilon * epsilon_decay, EPSILON_MIN)
             loss = []
             steps_since_update = 0
 
-            while not terminated:
+            while not done:
                 # select action with prob epsilon of being random
                 action = self.sample_action(state, epsilon)
                 # execute action in the environment and observe new state and reward
-                next_state, reward, terminated, _, _ = self.env.step(action.item())
+                next_state, reward, terminated, truncated, _ = self.env.step(action.item())
                 episode_reward += reward
+                # end of an episode is reached when (terminated or truncated)
+                done = terminated or truncated
                 next_state = torch.tensor(next_state, dtype=torch.float32, device=self.device).unsqueeze(0)
                 reward = torch.tensor([reward], device=self.device)
-                terminated = torch.tensor([terminated], device=self.device)
+                done = torch.tensor([done], device=self.device)
 
                 # Store the transition in replay memory
-                experience_replay.add(state, action, reward, next_state, terminated)
+                experience_replay.add(state, action, reward, next_state, done)
 
                 # After the transition is stored, update current state to the next state S_t+1 = S_t
                 state = next_state
@@ -231,14 +233,14 @@ class DeepQLearning:
                     minibatch_actions,
                     minibatch_rewards,
                     minibatch_next_states,
-                    minibatch_terminated,
+                    minibatch_done,
                 ) = transitions_minibatch
 
                 agent_q_values = self.agent(minibatch_states).gather(1, minibatch_actions)
                 with torch.no_grad():
                     max_next_state_q_values = self.target(minibatch_next_states).max(1).values
 
-                max_next_state_q_values[minibatch_terminated] = torch.zeros(sum(minibatch_terminated),
+                max_next_state_q_values[minibatch_done] = torch.zeros(sum(minibatch_done),
                                                                             device=self.device)
                 expected_q_values = minibatch_rewards + (gamma * max_next_state_q_values)
 
@@ -288,15 +290,16 @@ class DeepQLearning:
         state, _ = env.reset()
         # The model is trained and doesn't require any more exploration when selecting actions in the environment
         epsilon = 0
-        terminated = False
+        done = False
         total_reward = 0
-        while not terminated:
+        while not done:
             state = torch.tensor(state, dtype=torch.float32, device=self.device).unsqueeze(0)
             # select action
             action = self.sample_action(state, epsilon)
             # execute action in the environment and observe new state and reward
-            next_state, reward, terminated, _, _ = env.step(action.item())
+            next_state, reward, terminated, truncated, _ = env.step(action.item())
             total_reward += reward
+            done = terminated or truncated
 
             state = next_state
             if total_reward > 1000:
@@ -336,6 +339,33 @@ def plot_training_graphs(
     plt.savefig(os.path.join(full_path, "Losses_per_Episode.png"))
     plt.clf()
 
+    # Plot losses with log axis
+    plt.figure(figsize=figsize)
+    for i, losses in enumerate(losses_list):
+        plt.plot(range(len(losses)), losses, label=iteration_names[i])
+
+    plt.title("DQN - Average MSE Loss per Training Episode (Log Axis)")
+    plt.xlabel("Episodes (Log Scale)")
+    plt.ylabel("Average MSE Loss (Log Scale)")
+    plt.yscale('log')
+    plt.xscale('log')
+    plt.legend(loc='upper left', bbox_to_anchor=(0, 1))
+    plt.savefig(os.path.join(full_path, "Losses_per_Episode_log.png"))
+    plt.clf()
+
+    # Plot losses with log axis
+    plt.figure(figsize=figsize)
+    for i, losses in enumerate(losses_list):
+        plt.plot(range(len(losses)), losses, label=iteration_names[i])
+
+    plt.title("DQN - Average MSE Loss per Training Episode (Log Axis)")
+    plt.xlabel("Episodes (Log Scale)")
+    plt.ylabel("Average MSE Loss")
+    plt.xscale('log')
+    plt.legend(loc='upper left', bbox_to_anchor=(0, 1))
+    plt.savefig(os.path.join(full_path, "Losses_per_Episode_log.png"))
+    plt.clf()
+
     # Plot rewards
     plt.figure(figsize=figsize)
     for i, rewards in enumerate(rewards_list):
@@ -346,6 +376,31 @@ def plot_training_graphs(
     plt.ylabel("Total Reward")
     plt.legend(loc='upper left', bbox_to_anchor=(0, 1))
     plt.savefig(os.path.join(full_path, "Rewards_per_Episode.png"))
+
+    # Plot rewards with log axis
+    plt.figure(figsize=figsize)
+    for i, rewards in enumerate(rewards_list):
+        plt.plot(range(len(rewards)), rewards, label=iteration_names[i])
+
+    plt.title("DQN - Total Reward per Training Episode (Log Axis)")
+    plt.xlabel("Episodes (Log Scale)")
+    plt.ylabel("Total Reward (Log Scale)")
+    plt.yscale('log')
+    plt.xscale('log')
+    plt.legend(loc='upper left', bbox_to_anchor=(0, 1))
+    plt.savefig(os.path.join(full_path, "Rewards_per_Episode_log.png"))
+
+    # Plot rewards with log axis
+    plt.figure(figsize=figsize)
+    for i, rewards in enumerate(rewards_list):
+        plt.plot(range(len(rewards)), rewards, label=iteration_names[i])
+
+    plt.title("DQN - Total Reward per Training Episode (Log Axis)")
+    plt.xlabel("Episodes (Log Scale)")
+    plt.ylabel("Total Reward")
+    plt.xscale('log')
+    plt.legend(loc='upper left', bbox_to_anchor=(0, 1))
+    plt.savefig(os.path.join(full_path, "Rewards_per_Episode_log.png"))
 
 
 def parse_config(file_path):
