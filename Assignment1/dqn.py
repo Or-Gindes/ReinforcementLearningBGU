@@ -241,7 +241,7 @@ class DeepQLearning:
                     max_next_state_q_values = self.target(minibatch_next_states).max(1).values
 
                 max_next_state_q_values[minibatch_done] = torch.zeros(sum(minibatch_done),
-                                                                            device=self.device)
+                                                                      device=self.device)
                 expected_q_values = minibatch_rewards + (gamma * max_next_state_q_values)
 
                 # perform gradient decent step on MSE loss (model compiled with MSE)
@@ -273,6 +273,7 @@ class DeepQLearning:
                 # Number of episodes until the agent obtains an average reward >= 475 over 100 consecutive episodes
                 if not first_threshold_episode and average_reward_last_100 >= 475.0:
                     first_threshold_episode = episode + 1
+                    break
 
         if first_threshold_episode:
             print(f"Number of episodes to achieve average reward "
@@ -458,7 +459,7 @@ def main():
                         architecture_name,
                         conf_name,
                         "config",
-                        f"test_reward={test_reward if test_reward<=1000 else '> 1000'}",
+                        f"test_reward={test_reward if test_reward <= 1000 else '> 1000'}",
                         f"convergence_episode={convergence_episode}",
                     ]
                 )
