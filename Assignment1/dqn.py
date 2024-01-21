@@ -333,75 +333,24 @@ def plot_training_graphs(
     for i, losses in enumerate(losses_list):
         plt.plot(range(len(losses)), losses, label=iteration_names[i])
 
-    plt.title("DQN - Average MSE Loss per Training Episode")
-    plt.xlabel("Episodes")
-    plt.ylabel("Average MSE Loss")
-    plt.legend(loc='upper left', bbox_to_anchor=(0, 1))
-    plt.savefig(os.path.join(full_path, "Losses_per_Episode.png"))
-    plt.clf()
-
-    # Plot losses with log axis
-    plt.figure(figsize=figsize)
-    for i, losses in enumerate(losses_list):
-        plt.plot(range(len(losses)), losses, label=iteration_names[i])
-
-    plt.title("DQN - Average MSE Loss per Training Episode (Log Axis)")
-    plt.xlabel("Episodes (Log Scale)")
-    plt.ylabel("Average MSE Loss (Log Scale)")
-    plt.yscale('log')
-    plt.xscale('log')
-    plt.legend(loc='upper left', bbox_to_anchor=(0, 1))
-    plt.savefig(os.path.join(full_path, "Losses_per_Episode_log.png"))
-    plt.clf()
-
-    # Plot losses with log axis
-    plt.figure(figsize=figsize)
-    for i, losses in enumerate(losses_list):
-        plt.plot(range(len(losses)), losses, label=iteration_names[i])
-
-    plt.title("DQN - Average MSE Loss per Training Episode (Log Axis)")
-    plt.xlabel("Episodes (Log Scale)")
-    plt.ylabel("Average MSE Loss")
-    plt.xscale('log')
-    plt.legend(loc='upper left', bbox_to_anchor=(0, 1))
-    plt.savefig(os.path.join(full_path, "Losses_per_Episode_log.png"))
-    plt.clf()
+        plt.title("DQN - Average MSE Loss per Training Episode")
+        plt.xlabel("Episodes")
+        plt.ylabel("Average MSE Loss")
+        plt.legend(loc='upper left', bbox_to_anchor=(0, 1))
+        plt.savefig(os.path.join(full_path, f"Losses_per_Episode_{iteration_names[i]}.png"))
+        plt.clf()
 
     # Plot rewards
     plt.figure(figsize=figsize)
     for i, rewards in enumerate(rewards_list):
         plt.plot(range(len(rewards)), rewards, label=iteration_names[i])
 
-    plt.title("DQN - Total Reward per Training Episode")
-    plt.xlabel("Episodes")
-    plt.ylabel("Total Reward")
-    plt.legend(loc='upper left', bbox_to_anchor=(0, 1))
-    plt.savefig(os.path.join(full_path, "Rewards_per_Episode.png"))
-
-    # Plot rewards with log axis
-    plt.figure(figsize=figsize)
-    for i, rewards in enumerate(rewards_list):
-        plt.plot(range(len(rewards)), rewards, label=iteration_names[i])
-
-    plt.title("DQN - Total Reward per Training Episode (Log Axis)")
-    plt.xlabel("Episodes (Log Scale)")
-    plt.ylabel("Total Reward (Log Scale)")
-    plt.yscale('log')
-    plt.xscale('log')
-    plt.legend(loc='upper left', bbox_to_anchor=(0, 1))
-    plt.savefig(os.path.join(full_path, "Rewards_per_Episode_log.png"))
-
-    # Plot rewards with log axis
-    plt.figure(figsize=figsize)
-    for i, rewards in enumerate(rewards_list):
-        plt.plot(range(len(rewards)), rewards, label=iteration_names[i])
-
-    plt.title("DQN - Total Reward per Training Episode (Log Axis)")
-    plt.xlabel("Episodes (Log Scale)")
-    plt.ylabel("Total Reward")
-    plt.xscale('log')
-    plt.legend(loc='upper left', bbox_to_anchor=(0, 1))
-    plt.savefig(os.path.join(full_path, "Rewards_per_Episode_log.png"))
+        plt.title("DQN - Total Reward per Training Episode")
+        plt.xlabel("Episodes")
+        plt.ylabel("Total Reward")
+        plt.legend(loc='upper left', bbox_to_anchor=(0, 1))
+        plt.savefig(os.path.join(full_path, f"Rewards_per_Episode_{iteration_names[i]}.png.png"))
+        plt.clf()
 
 
 def parse_config(file_path):
@@ -433,6 +382,8 @@ def main():
     ):
         print(f"\nTesting config {config_number + 1} of {n_configs}")
         for architecture_name, layers in config["dqn_layers"].items():
+            if conf_name != "less_exploration" or architecture_name != "n_hidden_5" :
+                continue
             dqn = DeepQLearning(
                 env=config["environment"],
                 dqn_model=DQN,
