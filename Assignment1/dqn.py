@@ -405,7 +405,7 @@ def main():
             )
             config_loss.append(avg_episode_losses)
             config_rewards.append(episode_rewards)
-            test_reward = dqn.test_agent(render=False)
+            test_reward = dqn.test_agent(render=True)
             config_names.append(
                 "__".join(
                     [
