@@ -18,6 +18,7 @@ from tqdm import tqdm
 import random
 import matplotlib.pyplot as plt
 
+RUN_TYPE = "base"  # "full
 ENVIRONMENT = "CartPole-v1"
 LEARNING_RATE = 0.001
 DQN_HIDDEN_3 = (256, 128, 64)
@@ -130,9 +131,9 @@ class DeepQLearning:
         :param lr: learning rate for the model optimizer
         :param optimizer: compatible optimizer class
         :param loss: compatible loss class
-        :param device: "cpu" or "cuda" - device to train on
+        :param device: "cpu" or "cuda" - device to train on, if not provided default to cpu
         """
-        self.device = device if device else "cuda"
+        self.device = device if device else torch.device("cpu")
         # Load environment and check it state and action parameters
         self.env = gymnasium.make(env)
         self.render_env = gymnasium.make(env, render_mode="human")
@@ -361,6 +362,7 @@ def parse_config(file_path):
 
 
 def main():
+    # Set training device to GPU is available
     if torch.cuda.is_available():
         device = torch.device("cuda")
         print("GPU device detected, training on GPU")
@@ -372,18 +374,18 @@ def main():
         os.path.dirname(os.path.abspath(__file__)), "dqn_configs.json"
     )
     config = parse_config(config_path)
-
     config_loss = []
     config_rewards = []
     config_names = []
-    n_configs = len(config["training_hyperparams"].keys())
-    for config_number, (conf_name, conf_params) in enumerate(
-            config["training_hyperparams"].items()
-    ):
+    if RUN_TYPE == "base":
+        hyperparameter_scenarios = {"base config": config["training_hyperparams"]["base"]}
+    else:
+        hyperparameter_scenarios = config["training_hyperparams"]
+
+    n_configs = len(hyperparameter_scenarios.keys())
+    for config_number, (conf_name, conf_params) in enumerate(hyperparameter_scenarios.items()):
         print(f"\nTesting config {config_number + 1} of {n_configs}")
         for architecture_name, layers in config["dqn_layers"].items():
-            if conf_name != "less_exploration" or architecture_name != "n_hidden_5" :
-                continue
             dqn = DeepQLearning(
                 env=config["environment"],
                 dqn_model=DQN,
