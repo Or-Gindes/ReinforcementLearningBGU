@@ -328,7 +328,7 @@ def plot_training_graphs(
     if not os.path.exists(full_path):
         os.mkdir(full_path)
 
-    figsize = (20, 12)
+    figsize = (12, 8)
     # Plot losses
     plt.figure(figsize=figsize)
     for i, losses in enumerate(losses_list):
