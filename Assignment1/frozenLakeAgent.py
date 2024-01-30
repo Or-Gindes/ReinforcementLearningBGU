@@ -99,6 +99,7 @@ def plot_heat_map(_, lookup_table):
     plt.xticks(np.arange(lookup_table.shape[1]), ['left', 'down', 'right', 'up'], fontsize=6)
     plt.text(lookup_table.shape[1] / 2, -2, f"number of episodes = {_}",
              ha="center", va="center", fontsize=8)
+    plt.savefig(f'heat_map_{_}.jpg', format='jpeg')  # Adjust quality as needed
     plt.show()
 
 
@@ -109,6 +110,8 @@ def plot_rewards_per_episode(rewards_per_episode):
     plt.ylabel('Total Reward')
     plt.title('Rewards per Episode')
     plt.grid()
+    plt.savefig('rewards_per_episode.jpg', format='jpeg')  # Adjust quality as needed
+
     plt.show()
 
 
@@ -119,6 +122,8 @@ def plot_avg_steps_per_100_episodes(episode_idx, avg_steps):
     plt.ylabel('Average Steps to Goal (Last 100 Episodes)')
     plt.title('Average Steps to Goal over Last 100 Episodes')
     plt.grid()
+    plt.savefig('avg_steps_per_100_episodes.jpg', format='jpeg')  # Adjust quality as needed
+
     plt.show()
 
 
