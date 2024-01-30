@@ -145,7 +145,7 @@ class DoubleDQN(DeepQLearning):
                 # Randomly chose an agent to update
                 chosen_agent = random.choice([self.agent_a, self.agent_b])
                 target_agent = self.agent_a if chosen_agent is self.agent_b else self.agent_b
-                chosen_optimizer = self.optimizer_a if chosen_agent is self.agent_b else self.optimizer_b
+                chosen_optimizer = self.optimizer_a if chosen_agent is self.agent_a else self.optimizer_b
 
                 agent_q_values = chosen_agent(minibatch_states).gather(1, minibatch_actions)
                 with torch.no_grad():
@@ -240,7 +240,7 @@ def main():
     for config_number, (conf_name, conf_params) in enumerate(hyperparameter_scenarios.items()):
         print(f"\nTesting config {config_number + 1} of {n_configs}")
         for architecture_name, layers in config["dqn_layers"].items():
-            dqn = DeepQLearning(
+            double_dqn = DoubleDQN(
                 env=config["environment"],
                 dqn_model=DQN,
                 dqn_layers=layers,
@@ -248,7 +248,7 @@ def main():
                 loss=nn.MSELoss,
                 device=device
             )
-            avg_episode_losses, episode_rewards, convergence_episode = dqn.train_agent(
+            avg_episode_losses, episode_rewards, convergence_episode = double_dqn.train_agent(
                 optimizer=optim.Adam,
                 episode_count=config["m_episodes"],
                 gamma=conf_params["discount_factor"],
@@ -259,7 +259,7 @@ def main():
             )
             config_loss.append(avg_episode_losses)
             config_rewards.append(episode_rewards)
-            test_reward = dqn.test_agent(render=True)
+            test_reward = double_dqn.test_agent(render=True)
             config_names.append(
                 "__".join(
                     [
