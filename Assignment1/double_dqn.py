@@ -13,7 +13,6 @@ from dqn import DQN, ExperienceReplay, DeepQLearning, plot_training_graphs
 from tqdm import tqdm
 import random
 
-RUN_TYPE = "base"  # "full
 ENVIRONMENT = "CartPole-v1"
 LEARNING_RATE = 0.001
 DQN_HIDDEN_3 = (256, 128, 64)
@@ -224,36 +223,37 @@ def main():
     config_rewards = []
     config_names = []
 
-    double_dqn = DoubleDQN(
-        env=ENVIRONMENT,
-        dqn_model=DQN,
-        dqn_layers=DQN_HIDDEN_5,
-        lr=LEARNING_RATE,
-        loss=nn.MSELoss,
-        device=device
-    )
-    avg_episode_losses, episode_rewards, convergence_episode = double_dqn.train_agent(
-        optimizer=optim.Adam,
-        episode_count=M_EPISODES,
-        gamma=DISCOUNT_FACTOR,
-        replay_size=int(REPLAY_MEMORY_SIZE),
-        batch_size=BATCH_SIZE,
-        epsilon=EPSILON,
-        epsilon_decay=EPSILON_DECAY,
-    )
-    config_loss.append(avg_episode_losses)
-    config_rewards.append(episode_rewards)
-    test_reward = double_dqn.test_agent(render=True)
-    config_names.append(
-        "__".join(
-            [
-                "n_hidden_5",
-                "base_double_dqn",
-                f"test_reward={test_reward if test_reward <= 1000 else '> 1000'}",
-                f"convergence_episode={convergence_episode}",
-            ]
+    for architecture_name, layers in {"n_hidden_3": DQN_HIDDEN_3, "n_hidden_5": DQN_HIDDEN_3}.items():
+        double_dqn = DoubleDQN(
+            env=ENVIRONMENT,
+            dqn_model=DQN,
+            dqn_layers=layers,
+            lr=LEARNING_RATE,
+            loss=nn.MSELoss,
+            device=device
         )
-    )
+        avg_episode_losses, episode_rewards, convergence_episode = double_dqn.train_agent(
+            optimizer=optim.Adam,
+            episode_count=M_EPISODES,
+            gamma=DISCOUNT_FACTOR,
+            replay_size=int(REPLAY_MEMORY_SIZE),
+            batch_size=BATCH_SIZE,
+            epsilon=EPSILON,
+            epsilon_decay=EPSILON_DECAY,
+        )
+        config_loss.append(avg_episode_losses)
+        config_rewards.append(episode_rewards)
+        test_reward = double_dqn.test_agent(render=True)
+        config_names.append(
+            "__".join(
+                [
+                    architecture_name,
+                    "base_double_dqn",
+                    f"test_reward={test_reward if test_reward <= 1000 else '> 1000'}",
+                    f"convergence_episode={convergence_episode}",
+                ]
+            )
+        )
 
     plot_training_graphs(config_loss, config_rewards, config_names, results_dir='DDQN_graphs')
 
