@@ -120,7 +120,6 @@ class DeepQLearning:
             dqn_model=DQN,
             dqn_layers=DQN_HIDDEN_3,
             lr=LEARNING_RATE,
-            optimizer=optim.Adam,
             loss=nn.MSELoss,
             device: torch.device = None
     ) -> None:
@@ -129,7 +128,6 @@ class DeepQLearning:
         :param dqn_model: The model used in the algorithm
         :param dqn_layers: how to build the model
         :param lr: learning rate for the model optimizer
-        :param optimizer: compatible optimizer class
         :param loss: compatible loss class
         :param device: "cpu" or "cuda" - device to train on, if not provided default to cpu
         """
@@ -144,8 +142,6 @@ class DeepQLearning:
         self.lr = lr
         self.optimizer = None
         self.loss = loss()
-
-        self._build_dqn(optimizer)
 
     def _build_dqn(self, optimizer):
         """Build Agent and Target deep q learning networks"""
@@ -173,6 +169,7 @@ class DeepQLearning:
 
     def train_agent(
             self,
+            optimizer=optim.Adam,
             episode_count: int = M_EPISODES,
             gamma: float = DISCOUNT_FACTOR,
             replay_size: int = REPLAY_MEMORY_SIZE,
@@ -181,6 +178,7 @@ class DeepQLearning:
             epsilon_decay: float = EPSILON_DECAY,
     ) -> Tuple[List[float], List[int], int]:
         """
+        :param optimizer: compatible optimizer class
         :param episode_count: Number of episodes to train for
         :param gamma: discount factor
         :param replay_size: size of the experience replay buffer
@@ -190,6 +188,7 @@ class DeepQLearning:
         :return: a tuple of lists. The first, a list of average loss value per episode.
         The second, a list of rewards accumulated per episode
         """
+        self._build_dqn(optimizer)
         experience_replay = ExperienceReplay(replay_size)
         avg_episode_losses, episode_rewards = [], []
         # first_threshold_episode is the first episode where the agent obtains criteria
@@ -241,15 +240,15 @@ class DeepQLearning:
                 with torch.no_grad():
                     max_next_state_q_values = self.target(minibatch_next_states).max(1).values
 
+                # if done, reward is zero and there is no next_step for the update
                 max_next_state_q_values[minibatch_done] = torch.zeros(sum(minibatch_done),
                                                                       device=self.device)
                 expected_q_values = minibatch_rewards + (gamma * max_next_state_q_values)
 
-                # perform gradient decent step on MSE loss (model compiled with MSE)
+                # perform gradient descent step on MSE loss (model compiled with MSE)
                 loss_value = self.loss(agent_q_values, expected_q_values.unsqueeze(1))
                 self.optimizer.zero_grad()
                 loss_value.backward()
-                # nn.utils.clip_grad_value_(policy_net.parameters(), 100)
                 self.optimizer.step()
                 loss.append(loss_value.item())
 
