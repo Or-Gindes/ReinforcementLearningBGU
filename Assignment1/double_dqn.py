@@ -245,11 +245,11 @@ def main():
                 dqn_model=DQN,
                 dqn_layers=layers,
                 lr=conf_params["learning_rate"],
-                optimizer=optim.Adam,
                 loss=nn.MSELoss,
                 device=device
             )
             avg_episode_losses, episode_rewards, convergence_episode = dqn.train_agent(
+                optimizer=optim.Adam,
                 episode_count=config["m_episodes"],
                 gamma=conf_params["discount_factor"],
                 replay_size=config["replay_memory_size"],
