@@ -3,18 +3,15 @@ This script is an implementation of an agent using the basic DQN algorithm
 Reinforcement Learning course - Assignment 1 - Section 2
 """
 import os
-import json
 from typing import Tuple, List
-import gymnasium
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from dqn import DQN, ExperienceReplay, DeepQLearning, plot_training_graphs, parse_config
+from dqn import DQN, ExperienceReplay, DeepQLearning, plot_training_graphs
 
 from tqdm import tqdm
 import random
-import matplotlib.pyplot as plt
 
 RUN_TYPE = "base"  # "full
 ENVIRONMENT = "CartPole-v1"
@@ -27,7 +24,7 @@ M_EPISODES = 5000
 DISCOUNT_FACTOR = 0.995
 BATCH_SIZE = 64
 EPSILON = 1
-EPSILON_DECAY = 0.9975
+EPSILON_DECAY = 0.995
 EPSILON_MIN = 0.005
 
 
@@ -69,7 +66,7 @@ class DoubleDQN(DeepQLearning):
         with torch.no_grad():
             a_q_values = self.agent_a(state)
             b_q_values = self.agent_b(state)
-            q_values = torch.max(a_q_values, b_q_values)
+        q_values = torch.max(a_q_values, b_q_values)
         action = q_values.max(1).indices.view(1, 1)
         return action
 
@@ -108,7 +105,6 @@ class DoubleDQN(DeepQLearning):
             episode_reward = 0
             epsilon = max(epsilon * epsilon_decay, EPSILON_MIN)
             loss = []
-            steps_since_update = 0
 
             while not done:
                 # select action with prob epsilon of being random
@@ -224,53 +220,40 @@ def main():
         device = torch.device("cpu")
         print("Couldn't detect GPU, defaulting to CPU for training")
 
-    config_path = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "dqn_configs.json"
-    )
-    config = parse_config(config_path)
     config_loss = []
     config_rewards = []
     config_names = []
-    if RUN_TYPE == "base":
-        hyperparameter_scenarios = {"base config": config["training_hyperparams"]["base"]}
-    else:
-        hyperparameter_scenarios = config["training_hyperparams"]
 
-    n_configs = len(hyperparameter_scenarios.keys())
-    for config_number, (conf_name, conf_params) in enumerate(hyperparameter_scenarios.items()):
-        print(f"\nTesting config {config_number + 1} of {n_configs}")
-        for architecture_name, layers in config["dqn_layers"].items():
-            double_dqn = DoubleDQN(
-                env=config["environment"],
-                dqn_model=DQN,
-                dqn_layers=layers,
-                lr=conf_params["learning_rate"],
-                loss=nn.MSELoss,
-                device=device
-            )
-            avg_episode_losses, episode_rewards, convergence_episode = double_dqn.train_agent(
-                optimizer=optim.Adam,
-                episode_count=config["m_episodes"],
-                gamma=conf_params["discount_factor"],
-                replay_size=config["replay_memory_size"],
-                batch_size=conf_params["batch_size"],
-                epsilon=conf_params["epsilon"],
-                epsilon_decay=conf_params["epsilon_decay"],
-            )
-            config_loss.append(avg_episode_losses)
-            config_rewards.append(episode_rewards)
-            test_reward = double_dqn.test_agent(render=True)
-            config_names.append(
-                "__".join(
-                    [
-                        architecture_name,
-                        conf_name,
-                        "config",
-                        f"test_reward={test_reward if test_reward <= 1000 else '> 1000'}",
-                        f"convergence_episode={convergence_episode}",
-                    ]
-                )
-            )
+    double_dqn = DoubleDQN(
+        env=ENVIRONMENT,
+        dqn_model=DQN,
+        dqn_layers=DQN_HIDDEN_5,
+        lr=LEARNING_RATE,
+        loss=nn.MSELoss,
+        device=device
+    )
+    avg_episode_losses, episode_rewards, convergence_episode = double_dqn.train_agent(
+        optimizer=optim.Adam,
+        episode_count=M_EPISODES,
+        gamma=DISCOUNT_FACTOR,
+        replay_size=int(REPLAY_MEMORY_SIZE),
+        batch_size=BATCH_SIZE,
+        epsilon=EPSILON,
+        epsilon_decay=EPSILON_DECAY,
+    )
+    config_loss.append(avg_episode_losses)
+    config_rewards.append(episode_rewards)
+    test_reward = double_dqn.test_agent(render=True)
+    config_names.append(
+        "__".join(
+            [
+                "n_hidden_5",
+                "base_double_dqn",
+                f"test_reward={test_reward if test_reward <= 1000 else '> 1000'}",
+                f"convergence_episode={convergence_episode}",
+            ]
+        )
+    )
 
     plot_training_graphs(config_loss, config_rewards, config_names, results_dir='DDQN_graphs')
 
