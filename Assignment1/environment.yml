@@ -1,0 +1,15 @@
+name: RL_Assign1
+channels:
+  - defaults
+  - nvidia
+  - pytorch
+dependencies:
+  - python>=3.10,<3.11
+  - pip
+  - pytorch
+  - numpy
+  - matplotlib
+  - tqdm
+  - pip:
+      - gymnasium[classic-control]  # need this for rendering
+      - ruff  # dev
