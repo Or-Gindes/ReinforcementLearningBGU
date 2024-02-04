@@ -1,0 +1,13 @@
+name: RL_Assign2
+channels:
+  - defaults
+  - nvidia
+dependencies:
+  - python>=3.10,<3.11
+  - pip
+  - tensorflow
+  - numpy
+  - tqdm
+  - pip:
+      - gymnasium[classic-control]  # need this for rendering
+      - ruff  # dev
