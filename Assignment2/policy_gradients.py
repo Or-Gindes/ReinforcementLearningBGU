@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 import numpy as np
 import tensorflow.compat.v1 as tf
 import collections

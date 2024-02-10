@@ -1,11 +1,11 @@
 name: RL_Assign2
 channels:
   - defaults
-  - nvidia
+  - anaconda
 dependencies:
-  - python>=3.10,<3.11
+  - python>=3.9,<3.10
   - pip
-  - tensorflow
+  - tensorflow-gpu
   - numpy
   - tqdm
   - pip:
