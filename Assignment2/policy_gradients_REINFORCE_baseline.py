@@ -11,14 +11,28 @@ env = gym.make('CartPole-v1')
 np.random.seed(1)
 
 
+def setup_summary():
+    episode_avg_reward = tf.Variable(0.)
+    episode_loss = tf.Variable(0.)
+    episode_reward = tf.Variable(0.)
+    tf.summary.scalar("average reward over 100 episodes", episode_avg_reward)
+    tf.summary.scalar("episode reward", episode_reward)
+    tf.summary.scalar("episode loss", episode_loss)
+    summary_vars = [episode_avg_reward, episode_reward, episode_loss]
+    summary_placeholders = [tf.placeholder(tf.float32) for _ in range(len(summary_vars))]
+    update_ops = [summary_vars[i].assign(summary_placeholders[i]) for i in range(len(summary_vars))]
+    summary_op = tf.summary.merge_all()
+    return summary_placeholders, update_ops, summary_op
+
+
 class PolicyNetwork:
     def __init__(self, state_size, action_size, learning_rate, name='policy_network'):
         self.state_size = state_size
         self.action_size = action_size
         self.learning_rate = learning_rate
+        self.summary_placeholders, self.update_ops, self.summary_op = setup_summary()
 
         with tf.variable_scope(name):
-
             self.state = tf.placeholder(tf.float32, [None, self.state_size], name="state")
             self.action = tf.placeholder(tf.int32, [self.action_size], name="action")
             self.R_t = tf.placeholder(tf.float32, name="total_rewards")
@@ -40,6 +54,14 @@ class PolicyNetwork:
             self.loss = tf.reduce_mean(self.neg_log_prob * self.R_t)
             self.optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate).minimize(self.loss)
 
+    def write_summary(self, sess, writer, avg_episode_reward, episode_reward, episode_loss, episode):
+        summary_values = {self.summary_placeholders[0]: avg_episode_reward,
+                          self.summary_placeholders[1]: episode_reward, self.summary_placeholders[2]: episode_loss}
+        sess.run(self.update_ops, feed_dict=summary_values)
+        summary_str = sess.run(self.summary_op, feed_dict=summary_values)
+        writer.add_summary(summary_str, episode)
+        writer.flush()
+
 
 def run():
     # Define hyperparameters
@@ -60,6 +82,7 @@ def run():
     # Start training the agent with REINFORCE algorithm
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())
+        writer = tf.summary.FileWriter("./logs/REINFORCE", sess.graph)
         solved = False
         Transition = collections.namedtuple("Transition", ["state", "action", "reward", "next_state", "done"])
         episode_rewards = np.zeros(max_episodes)
@@ -100,10 +123,16 @@ def run():
                 break
 
             # Compute Rt for each time-step t and update the network's weights
+            total_loss = 0
             for t, transition in enumerate(episode_transitions):
                 total_discounted_return = sum(discount_factor ** i * t.reward for i, t in enumerate(episode_transitions[t:])) # Rt
                 feed_dict = {policy.state: transition.state, policy.R_t: total_discounted_return, policy.action: transition.action}
                 _, loss = sess.run([policy.optimizer, policy.loss], feed_dict)
+                total_loss += loss
+
+            policy.write_summary(sess, writer, average_rewards, episode_rewards[episode], total_loss, episode)
+
+        writer.close()
 
 
 if __name__ == '__main__':
