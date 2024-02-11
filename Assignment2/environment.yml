@@ -6,7 +6,8 @@ dependencies:
   - python>=3.9,<3.10
   - pip
   - tensorflow-gpu
-  - numpy
+  - keras
+  - numpy>=1.21,<1.24
   - tqdm
   - pip:
       - gymnasium[classic-control]  # need this for rendering
