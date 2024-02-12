@@ -25,6 +25,26 @@ def setup_summary():
     return summary_placeholders, update_ops, summary_op
 
 
+class StateValuesNetwork:
+    def __init__(self, state_size, learning_rate, state, name='state_value_network'):
+        self.state_size = state_size
+        self.learning_rate = learning_rate
+        self.state = state
+
+        with tf.variable_scope(name):
+            tf2_initializer = tf.keras.initializers.glorot_normal(seed=0)
+            self.W1 = tf.get_variable("W1", [self.state_size, 16], initializer=tf2_initializer)
+            self.b1 = tf.get_variable("b1", [16], initializer=tf2_initializer)
+            self.W2 = tf.get_variable("W2", [16, 1], initializer=tf2_initializer)
+            self.b2 = tf.get_variable("b2", [1], initializer=tf2_initializer)
+
+            self.Z1 = tf.add(tf.matmul(self.state, self.W1), self.b1)
+            self.A1 = tf.nn.relu(self.Z1)
+            self.output = tf.add(tf.matmul(self.A1, self.W2), self.b2)
+
+            self.optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
+
+
 class PolicyNetwork:
     def __init__(self, state_size, action_size, learning_rate, name='policy_network'):
         self.state_size = state_size
@@ -49,10 +69,14 @@ class PolicyNetwork:
 
             # Softmax probability distribution over actions
             self.actions_distribution = tf.squeeze(tf.nn.softmax(self.output))
+
+            self.baseline = StateValuesNetwork(self.state_size, self.learning_rate, self.state)
+            self.advantage = self.R_t - self.baseline.output
             # Loss with negative log probability
             self.neg_log_prob = tf.nn.softmax_cross_entropy_with_logits_v2(logits=self.output, labels=self.action)
-            self.loss = tf.reduce_mean(self.neg_log_prob * self.R_t)
+            self.loss = tf.reduce_mean(self.neg_log_prob * (self.R_t - tf.stop_gradient(self.baseline.output)))
             self.optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate).minimize(self.loss)
+            self.baseline_optimizer = self.baseline.optimizer.minimize(self.advantage ** 2)
 
     def write_summary(self, sess, writer, avg_episode_reward, episode_reward, episode_loss, episode):
         summary_values = {self.summary_placeholders[0]: avg_episode_reward,
@@ -79,10 +103,10 @@ def run():
     tf.reset_default_graph()
     policy = PolicyNetwork(state_size, action_size, learning_rate)
 
-    # Start training the agent with REINFORCE algorithm
+    # Start training the agent with REINFORCE w/baseline algorithm
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())
-        writer = tf.summary.FileWriter("./logs/REINFORCE", sess.graph)
+        writer = tf.summary.FileWriter("./logs/REINFORCE_BASELINE", sess.graph)
         solved = False
         Transition = collections.namedtuple("Transition", ["state", "action", "reward", "next_state", "done"])
         episode_rewards = np.zeros(max_episodes)
@@ -127,7 +151,7 @@ def run():
             for t, transition in enumerate(episode_transitions):
                 total_discounted_return = sum(discount_factor ** i * t.reward for i, t in enumerate(episode_transitions[t:])) # Rt
                 feed_dict = {policy.state: transition.state, policy.R_t: total_discounted_return, policy.action: transition.action}
-                _, loss = sess.run([policy.optimizer, policy.loss], feed_dict)
+                _, _, loss = sess.run([policy.optimizer, policy.baseline_optimizer, policy.loss], feed_dict)
                 total_loss += loss
 
             policy.write_summary(sess, writer, average_rewards, episode_rewards[episode], total_loss, episode)
