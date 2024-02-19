@@ -31,7 +31,7 @@ class StateValuesNetwork:
         self.learning_rate = learning_rate
         self.state = state
 
-        with tf.variable_scope(name):
+        with tf.variable_scope(name, reuse=tf.AUTO_REUSE):
             tf2_initializer = tf.keras.initializers.glorot_normal(seed=0)
             self.W1 = tf.get_variable("W1", [self.state_size, 16], initializer=tf2_initializer)
             self.b1 = tf.get_variable("b1", [16], initializer=tf2_initializer)
@@ -55,6 +55,8 @@ class PolicyNetwork:
         with tf.variable_scope(name):
             self.state = tf.placeholder(tf.float32, [None, self.state_size], name="state")
             self.action = tf.placeholder(tf.int32, [self.action_size], name="action")
+            self.nnext_state = tf.placeholder(tf.float32, [None, self.state_size], name="nnext_state")
+
             self.R_t = tf.placeholder(tf.float32, name="total_rewards")
 
             tf2_initializer = tf.keras.initializers.glorot_normal(seed=0)
@@ -70,13 +72,15 @@ class PolicyNetwork:
             # Softmax probability distribution over actions
             self.actions_distribution = tf.squeeze(tf.nn.softmax(self.output))
 
-            self.baseline = StateValuesNetwork(self.state_size, self.learning_rate, self.state)
-            self.advantage = self.R_t - self.baseline.output
+            self.baseline1 = StateValuesNetwork(self.state_size, self.learning_rate, self.state)
+            self.baseline2 = StateValuesNetwork(self.state_size, self.learning_rate, self.nnext_state)
+            self.baseline = self.baseline2.output - self.baseline1.output
+            self.advantage = self.R_t + self.baseline
             # Loss with negative log probability
             self.neg_log_prob = tf.nn.softmax_cross_entropy_with_logits_v2(logits=self.output, labels=self.action)
-            self.loss = tf.reduce_mean(self.neg_log_prob * (self.R_t - tf.stop_gradient(self.baseline.output)))
+            self.loss = tf.reduce_mean(self.neg_log_prob * (self.R_t - tf.stop_gradient(self.baseline1.output)))
             self.optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate).minimize(self.loss)
-            self.baseline_optimizer = self.baseline.optimizer.minimize(self.advantage ** 2)
+            self.baseline_optimizer = self.baseline1.optimizer.minimize(self.advantage ** 2)
 
     def write_summary(self, sess, writer, avg_episode_reward, episode_reward, episode_loss, episode):
         summary_values = {self.summary_placeholders[0]: avg_episode_reward,
@@ -122,6 +126,8 @@ def run():
                 action = np.random.choice(np.arange(len(actions_distribution)), p=actions_distribution)
                 next_state, reward, terminated, truncated, _ = env.step(action)
                 next_state = next_state.reshape([1, state_size])
+                sess.run({policy.nnext_state: next_state})
+
                 done = terminated or truncated
 
                 if render:
