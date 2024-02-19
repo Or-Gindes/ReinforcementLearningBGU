@@ -79,9 +79,9 @@ class PolicyNetwork:
             self.R_t = tf.placeholder(tf.float32, name="total_rewards")
 
             tf2_initializer = tf.keras.initializers.glorot_normal(seed=0)
-            self.W1 = tf.get_variable("W1", [self.state_size, 12], initializer=tf2_initializer)
-            self.b1 = tf.get_variable("b1", [12], initializer=tf2_initializer)
-            self.W2 = tf.get_variable("W2", [12, self.action_size], initializer=tf2_initializer)
+            self.W1 = tf.get_variable("W1", [self.state_size, 16], initializer=tf2_initializer)
+            self.b1 = tf.get_variable("b1", [16], initializer=tf2_initializer)
+            self.W2 = tf.get_variable("W2", [16, self.action_size], initializer=tf2_initializer)
             self.b2 = tf.get_variable("b2", [self.action_size], initializer=tf2_initializer)
 
             self.Z1 = tf.add(tf.matmul(self.state, self.W1), self.b1)
@@ -100,13 +100,11 @@ class PolicyNetwork:
                 self.value_network_optimizer = self.baseline.optimizer.minimize(self.advantage ** 2)
 
             if critic:
-                self.critic = StateValuesNetwork(self.state_size, self.learning_rate, self.state, self.nnext_state, self.done)
+                self.critic = StateValuesNetwork(self.state_size, self.learning_rate / 2, self.state, self.nnext_state, self.done)
                 self.delta = self.R_t + (self.discount_factor * self.critic.next_state_output) - self.critic.state_output
                 self.loss = tf.reduce_mean(self.neg_log_prob * self.I * tf.stop_gradient(self.delta))
                 # self.value_network_loss = tf.squeeze(self.delta)
-                self.value_network_optimizer = self.critic.optimizer.minimize(
-                    self.I * tf.stop_gradient(self.delta) * self.critic.state_output
-                )
+                self.value_network_optimizer = self.critic.optimizer.minimize(self.delta ** 2)
 
             # Loss with negative log probability
             self.optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate).minimize(self.loss)
@@ -127,8 +125,8 @@ def run():
 
     max_episodes = 5000
     max_steps = 501
-    discount_factor = 0.99
-    learning_rate = 0.0004
+    discount_factor = 1.0
+    learning_rate = 4e-4
 
     render = False
 
@@ -173,8 +171,8 @@ def run():
                 episode_rewards[episode] += reward
 
                 if method == "critic":
-                    feed_dict = {policy.state: state, policy.R_t: reward, policy.I: I,
-                                 policy.action: action_one_hot, policy.nnext_state: next_state, policy.done: done}
+                    feed_dict = {policy.state: state, policy.R_t: reward, policy.action: action_one_hot,
+                                 policy.nnext_state: next_state, policy.done: done, policy.I: I}
                     _, _, loss = sess.run([policy.optimizer, policy.value_network_optimizer, policy.loss], feed_dict)
                     episode_loss += loss
                     I = discount_factor * I
