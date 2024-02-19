@@ -103,7 +103,6 @@ class PolicyNetwork:
                 self.critic = StateValuesNetwork(self.state_size, self.learning_rate / 2, self.state, self.nnext_state, self.done)
                 self.delta = self.R_t + (self.discount_factor * self.critic.next_state_output) - self.critic.state_output
                 self.loss = tf.reduce_mean(self.neg_log_prob * self.I * tf.stop_gradient(self.delta))
-                # self.value_network_loss = tf.squeeze(self.delta)
                 self.value_network_optimizer = self.critic.optimizer.minimize(self.delta ** 2)
 
             # Loss with negative log probability
