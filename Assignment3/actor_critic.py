@@ -11,7 +11,6 @@ print("tf_ver:{}".format(tf.__version__))
 np.random.seed(1)
 
 
-
 def setup_summary():
     episode_avg_reward = tf.Variable(0.)
     episode_loss = tf.Variable(0.)
@@ -36,9 +35,9 @@ class StateValuesNetwork:
 
         with tf.variable_scope(name):
             tf2_initializer = tf.keras.initializers.glorot_normal(seed=0)
-            self.W1 = tf.get_variable("W1", [self.state_size, 16], initializer=tf2_initializer)
-            self.b1 = tf.get_variable("b1", [16], initializer=tf2_initializer)
-            self.W2 = tf.get_variable("W2", [16, 1], initializer=tf2_initializer)
+            self.W1 = tf.get_variable("W1", [self.state_size, 12], initializer=tf2_initializer)
+            self.b1 = tf.get_variable("b1", [12], initializer=tf2_initializer)
+            self.W2 = tf.get_variable("W2", [12, 1], initializer=tf2_initializer)
             self.b2 = tf.get_variable("b2", [1], initializer=tf2_initializer)
 
             self.Z1 = tf.add(tf.matmul(self.state, self.W1), self.b1)
@@ -88,7 +87,7 @@ class ActorCritic:
 
             self.neg_log_prob = tf.nn.softmax_cross_entropy_with_logits_v2(logits=self.output, labels=self.action)
 
-            self.critic = StateValuesNetwork(self.state_size, self.learning_rate / 2, self.state, self.nnext_state,
+            self.critic = StateValuesNetwork(self.state_size, self.learning_rate*10, self.state, self.nnext_state,
                                              self.done)
             self.delta = self.R_t + (self.discount_factor * self.critic.next_state_output) - self.critic.state_output
             self.loss = tf.reduce_mean(self.neg_log_prob * self.I * tf.stop_gradient(self.delta))
