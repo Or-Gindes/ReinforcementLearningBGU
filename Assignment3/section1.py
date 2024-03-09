@@ -1,12 +1,14 @@
+import os
 import gymnasium as gym
 import numpy as np
 import tensorflow.compat.v1 as tf
 from actor_critic import ActorCritic
+from sklearn.preprocessing import StandardScaler
 
 np.random.seed(1)
 tf.compat.v1.set_random_seed(1)
 
-ENV_NAMES = ['MountainCarContinuous-v0'] # 'CartPole-v1', 'Acrobot-v1',
+ENV_NAMES = ['CartPole-v1', 'Acrobot-v1', 'MountainCarContinuous-v0']
 
 MAX_ENV_STEPS = {
     'CartPole-v1': 500,
@@ -17,17 +19,18 @@ MAX_ENV_STEPS = {
 CONVERGENCE_THRESHOLD = {
     'CartPole-v1': 475,
     'Acrobot-v1': -90,
-    'MountainCarContinuous-v0': 10
+    'MountainCarContinuous-v0': 75
 }
 
 MOUNTAINCAR_DISCRETE_TO_CONTINUOUS = {0: -1.0, 1: 0.0, 2: 1.0}
 
 # Define training hyperparameters
 MAX_EPISODES = 5000
-DISCOUNT_FACTOR = 0.99
+DISCOUNT_FACTOR = 1
 LEARNING_RATE = 1e-3
 
-MODEL_PATH = "./saved_models/model.ckpt"
+BASE_MODEL_PATH = "./saved_models/"
+
 
 def pad_state(state, pad2len):
     if state.shape[0] < pad2len:
@@ -44,6 +47,13 @@ def mask_actions(actions_distribution, num_actions):
     return masked_actions_dist
 
 
+def scale_observations(env, padding_size):
+    observation_examples = np.array([pad_state(env.observation_space.sample(), padding_size) for _ in range(10000)])
+    scaler = StandardScaler()
+    scaler.fit(observation_examples.reshape(-1, padding_size))
+    return scaler
+
+
 def run():
     environments = {env_name: gym.make(env_name) for env_name in ENV_NAMES}
     env_params = {
@@ -57,8 +67,6 @@ def run():
     standardized_state_size = max([params['state_size'] for params in env_params.values()])
     # action_size = output_size
     standardized_action_size = max([params['action_size'] for params in env_params.values()])
-
-    # train_env(environments[BASE_ENV], BASE_ENV, standardized_state_size, standardized_action_size)
 
     for env_name in ENV_NAMES:
         train_env(
@@ -88,12 +96,20 @@ def train_env(env, env_name, state_size, action_size, env_params, model_path=Non
         episode_rewards = np.zeros(MAX_EPISODES)
         average_rewards = -1e3
 
+        if env_name == 'MountainCarContinuous-v0':
+            num_goal_reached = 0
+            scaler = scale_observations(env, state_size)
+
         for episode in range(MAX_EPISODES):
             episode_loss = 0
             state, _ = env.reset()
             state = pad_state(state, state_size)
             I = 1.0
             done = False
+
+            if env_name == 'MountainCarContinuous-v0':
+                state = scaler.transform(state)
+                max_left = max_right = state[0, 0]
 
             while not done:
                 actions_distribution = sess.run(policy.actions_distribution, {policy.state: state})
@@ -103,15 +119,34 @@ def train_env(env, env_name, state_size, action_size, env_params, model_path=Non
                 if env_name == 'MountainCarContinuous-v0':
                     continuous_action = [MOUNTAINCAR_DISCRETE_TO_CONTINUOUS[action]]
                     next_state, reward, terminated, truncated, _ = env.step(continuous_action)
+                    next_state = scaler.transform(pad_state(next_state, state_size))
                 else:
                     next_state, reward, terminated, truncated, _ = env.step(action)
-                next_state = pad_state(next_state, state_size)
+                    next_state = pad_state(next_state, state_size)
+
                 done = terminated or truncated
 
                 action_one_hot = np.zeros(action_size)
                 action_one_hot[action] = 1
 
                 episode_rewards[episode] += reward
+
+                # Auxiliary rewards per height achieved by the car
+                if env_name == 'MountainCarContinuous-v0':
+                    if num_goal_reached < 20:
+                        if reward <= 0:
+                            if next_state[0, 0] < max_left:
+                                reward = (1 + next_state[0, 0]) ** 2
+                                max_left = next_state[0, 0]
+
+                            if next_state[0, 0] > max_right:
+                                reward = (1 + next_state[0, 0]) ** 2
+                                max_right = next_state[0, 0]
+
+                        else:
+                            num_goal_reached += 1
+                            reward += 100
+                            print(f'goal reached {num_goal_reached} times')
 
                 feed_dict = {policy.state: state, policy.R_t: reward, policy.action: action_one_hot,
                              policy.nnext_state: next_state, policy.done: done, policy.I: I}
@@ -141,7 +176,7 @@ def train_env(env, env_name, state_size, action_size, env_params, model_path=Non
         writer.close()
 
         if model_path is None:
-            saver.save(sess, MODEL_PATH)
+            saver.save(sess, os.path.join(BASE_MODEL_PATH, f'{env_name}' + "_model.ckpt"))
 
 
 if __name__ == '__main__':
