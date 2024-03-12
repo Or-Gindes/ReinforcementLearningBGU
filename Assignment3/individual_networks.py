@@ -10,6 +10,19 @@ tf.compat.v1.set_random_seed(1)
 
 ENV_NAMES = ['CartPole-v1', 'Acrobot-v1', 'MountainCarContinuous-v0']
 
+ENVIRONMENTS = {env_name: gym.make(env_name) for env_name in ENV_NAMES}
+ENV_PARAMS = {
+    env_name: {
+        "state_size": ENVIRONMENTS[env_name].observation_space.shape[0],
+        "action_size": ENVIRONMENTS[env_name].action_space.n if env_name != 'MountainCarContinuous-v0' else 3
+    } for env_name in ENV_NAMES
+}
+
+# state_size = input_size
+STANDARDIZED_STATE_SIZE = max([params['state_size'] for params in ENV_PARAMS.values()])
+# action_size = output_size
+STANDARDIZED_ACTION_SIZE = max([params['action_size'] for params in ENV_PARAMS.values()])
+
 MAX_ENV_STEPS = {
     'CartPole-v1': 500,
     'Acrobot-v1': 500,
@@ -55,26 +68,13 @@ def scale_observations(env, padding_size):
 
 
 def run():
-    environments = {env_name: gym.make(env_name) for env_name in ENV_NAMES}
-    env_params = {
-        env_name: {
-            "state_size": environments[env_name].observation_space.shape[0],
-            "action_size": environments[env_name].action_space.n if env_name != 'MountainCarContinuous-v0' else 3
-        } for env_name in ENV_NAMES
-    }
-
-    # state_size = input_size
-    standardized_state_size = max([params['state_size'] for params in env_params.values()])
-    # action_size = output_size
-    standardized_action_size = max([params['action_size'] for params in env_params.values()])
-
     for env_name in ENV_NAMES:
         train_env(
-            environments[env_name],
+            ENVIRONMENTS[env_name],
             env_name,
-            standardized_state_size,
-            standardized_action_size,
-            env_params
+            STANDARDIZED_STATE_SIZE,
+            STANDARDIZED_ACTION_SIZE,
+            ENV_PARAMS
         )
 
 

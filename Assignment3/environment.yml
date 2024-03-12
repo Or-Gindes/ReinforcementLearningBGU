@@ -8,6 +8,7 @@ dependencies:
   - tensorflow-gpu
   - keras
   - numpy>=1.21,<1.24
+  - scikit-learn
   - tqdm
   - pip:
       - gymnasium[classic-control]  # need this for rendering
