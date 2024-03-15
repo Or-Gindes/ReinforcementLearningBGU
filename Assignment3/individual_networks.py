@@ -8,13 +8,16 @@ from sklearn.preprocessing import StandardScaler
 np.random.seed(1)
 tf.compat.v1.set_random_seed(1)
 
-ENV_NAMES = ['CartPole-v1', 'Acrobot-v1', 'MountainCarContinuous-v0']
+CARTPOLE = 'CartPole-v1'
+ACROBOT = 'Acrobot-v1'
+MOUNTAINCAR = 'MountainCarContinuous-v0'
+ENV_NAMES = [CARTPOLE, ACROBOT, MOUNTAINCAR]
 
 ENVIRONMENTS = {env_name: gym.make(env_name) for env_name in ENV_NAMES}
 ENV_PARAMS = {
     env_name: {
         "state_size": ENVIRONMENTS[env_name].observation_space.shape[0],
-        "action_size": ENVIRONMENTS[env_name].action_space.n if env_name != 'MountainCarContinuous-v0' else 3
+        "action_size": ENVIRONMENTS[env_name].action_space.n if env_name != MOUNTAINCAR else 3
     } for env_name in ENV_NAMES
 }
 
@@ -24,15 +27,15 @@ STANDARDIZED_STATE_SIZE = max([params['state_size'] for params in ENV_PARAMS.val
 STANDARDIZED_ACTION_SIZE = max([params['action_size'] for params in ENV_PARAMS.values()])
 
 MAX_ENV_STEPS = {
-    'CartPole-v1': 500,
-    'Acrobot-v1': 500,
-    'MountainCarContinuous-v0': 999
+    CARTPOLE: 500,
+    ACROBOT: 500,
+    MOUNTAINCAR: 999
 }
 
 CONVERGENCE_THRESHOLD = {
-    'CartPole-v1': 475,
-    'Acrobot-v1': -90,
-    'MountainCarContinuous-v0': 75
+    CARTPOLE: 475,
+    ACROBOT: -90,
+    MOUNTAINCAR: 75
 }
 
 MOUNTAINCAR_DISCRETE_TO_CONTINUOUS = {0: -1.0, 1: 0.0, 2: 1.0}
@@ -96,7 +99,7 @@ def train_env(env, env_name, state_size, action_size, env_params, model_path=Non
         episode_rewards = np.zeros(MAX_EPISODES)
         average_rewards = -1e3
 
-        if env_name == 'MountainCarContinuous-v0':
+        if env_name == MOUNTAINCAR:
             num_goal_reached = 0
             scaler = scale_observations(env, state_size)
 
@@ -107,7 +110,7 @@ def train_env(env, env_name, state_size, action_size, env_params, model_path=Non
             I = 1.0
             done = False
 
-            if env_name == 'MountainCarContinuous-v0':
+            if env_name == MOUNTAINCAR:
                 state = scaler.transform(state)
                 max_left = max_right = state[0, 0]
 
@@ -116,7 +119,7 @@ def train_env(env, env_name, state_size, action_size, env_params, model_path=Non
                 masked_actions_dist = mask_actions(actions_distribution, env_params[env_name]['action_size'])
                 action = np.random.choice(np.arange(len(masked_actions_dist)), p=masked_actions_dist)
 
-                if env_name == 'MountainCarContinuous-v0':
+                if env_name == MOUNTAINCAR:
                     continuous_action = [MOUNTAINCAR_DISCRETE_TO_CONTINUOUS[action]]
                     next_state, reward, terminated, truncated, _ = env.step(continuous_action)
                     next_state = scaler.transform(pad_state(next_state, state_size))
@@ -132,7 +135,7 @@ def train_env(env, env_name, state_size, action_size, env_params, model_path=Non
                 episode_rewards[episode] += reward
 
                 # Auxiliary rewards per height achieved by the car
-                if env_name == 'MountainCarContinuous-v0':
+                if env_name == MOUNTAINCAR:
                     if num_goal_reached < 20:
                         if reward <= 0:
                             if next_state[0, 0] < max_left:
@@ -147,6 +150,12 @@ def train_env(env, env_name, state_size, action_size, env_params, model_path=Non
                             num_goal_reached += 1
                             reward += 100
                             print(f'goal reached {num_goal_reached} times')
+
+                if env_name == ACROBOT:
+                    reward = (reward - 50) / MAX_ENV_STEPS[ACROBOT]
+
+                if env_name == CARTPOLE:
+                    reward = 1 - reward / MAX_ENV_STEPS[CARTPOLE]
 
                 feed_dict = {policy.state: state, policy.R_t: reward, policy.action: action_one_hot,
                              policy.nnext_state: next_state, policy.done: done, policy.I: I}
