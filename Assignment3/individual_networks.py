@@ -43,7 +43,7 @@ MOUNTAINCAR_DISCRETE_TO_CONTINUOUS = {0: -1.0, 1: 0.0, 2: 1.0}
 # Define training hyperparameters
 MAX_EPISODES = 5000
 DISCOUNT_FACTOR = 1
-LEARNING_RATE = 1e-4
+LEARNING_RATE = 1e-3
 
 BASE_MODEL_PATH = "./saved_models/"
 
@@ -72,14 +72,13 @@ def scale_observations(env, padding_size):
 
 def run():
     for env_name in ENV_NAMES:
-        if env_name == MOUNTAINCAR:
-            train_env(
-                ENVIRONMENTS[env_name],
-                env_name,
-                STANDARDIZED_STATE_SIZE,
-                STANDARDIZED_ACTION_SIZE,
-                ENV_PARAMS
-            )
+        train_env(
+            ENVIRONMENTS[env_name],
+            env_name,
+            STANDARDIZED_STATE_SIZE,
+            STANDARDIZED_ACTION_SIZE,
+            ENV_PARAMS
+        )
 
 
 def train_env(env, env_name, state_size, action_size, env_params, model_path=None):
