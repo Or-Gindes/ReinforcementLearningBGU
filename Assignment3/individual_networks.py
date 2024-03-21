@@ -84,7 +84,7 @@ def run():
 def train_env(env, env_name, state_size, action_size, env_params, model_path=None):
     # Initialize the policy network
     tf.reset_default_graph()
-    policy = ActorCritic(state_size, action_size, LEARNING_RATE, DISCOUNT_FACTOR)
+    policy = ActorCritic(state_size, action_size, LEARNING_RATE, DISCOUNT_FACTOR,env_name)
 
     converge_thresh = CONVERGENCE_THRESHOLD[env_name]
     saver = tf.train.Saver()

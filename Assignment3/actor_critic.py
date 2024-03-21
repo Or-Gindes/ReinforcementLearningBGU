@@ -77,6 +77,7 @@ class ActorCritic:
             self.b1 = tf.get_variable("b1", [32], initializer=tf2_initializer)
             self.W2 = tf.get_variable("W2", [32, self.action_size], initializer=tf2_initializer)
             self.b2 = tf.get_variable("b2", [self.action_size], initializer=tf2_initializer)
+            self.variables = [self.W1, self.b1, self.W2, self.b2]
 
             self.Z1 = tf.add(tf.matmul(self.state, self.W1), self.b1)
             self.A1 = tf.nn.relu(self.Z1)
