@@ -43,7 +43,7 @@ MOUNTAINCAR_DISCRETE_TO_CONTINUOUS = {0: -1.0, 1: 0.0, 2: 1.0}
 # Define training hyperparameters
 MAX_EPISODES = 5000
 DISCOUNT_FACTOR = 1
-LEARNING_RATE = 1e-3
+LEARNING_RATE = 1e-4
 
 BASE_MODEL_PATH = "./saved_models/"
 
@@ -72,120 +72,123 @@ def scale_observations(env, padding_size):
 
 def run():
     for env_name in ENV_NAMES:
-        train_env(
-            ENVIRONMENTS[env_name],
-            env_name,
-            STANDARDIZED_STATE_SIZE,
-            STANDARDIZED_ACTION_SIZE,
-            ENV_PARAMS
-        )
+        if env_name == MOUNTAINCAR:
+            train_env(
+                ENVIRONMENTS[env_name],
+                env_name,
+                STANDARDIZED_STATE_SIZE,
+                STANDARDIZED_ACTION_SIZE,
+                ENV_PARAMS
+            )
 
 
 def train_env(env, env_name, state_size, action_size, env_params, model_path=None):
     # Initialize the policy network
     tf.reset_default_graph()
-    policy = ActorCritic(state_size, action_size, LEARNING_RATE, DISCOUNT_FACTOR)
 
     converge_thresh = CONVERGENCE_THRESHOLD[env_name]
-    saver = tf.train.Saver()
-    # Start training the ActorCritic network
-    with tf.Session() as sess:
-        if model_path:
-            saver.restore(sess, model_path)
+    with tf.compat.v1.variable_scope(f"{env_name}_model"):
+        policy = ActorCritic(state_size, action_size, LEARNING_RATE, DISCOUNT_FACTOR)
+        saver = tf.train.Saver()
+        # Start training the ActorCritic network
 
-        sess.run(tf.global_variables_initializer())
-        writer = tf.summary.FileWriter(f"./logs/section1/{env_name}", sess.graph)
-        solved = False
-        episode_rewards = np.zeros(MAX_EPISODES)
-        average_rewards = -1e3
+        with tf.Session() as sess:
+            if model_path:
+                saver.restore(sess, model_path)
 
-        if env_name == MOUNTAINCAR:
-            num_goal_reached = 0
-            scaler = scale_observations(env, state_size)
-
-        for episode in range(MAX_EPISODES):
-            episode_loss = 0
-            state, _ = env.reset()
-            state = pad_state(state, state_size)
-            I = 1.0
-            done = False
+            sess.run(tf.global_variables_initializer())
+            writer = tf.summary.FileWriter(f"./logs/section1/{env_name}", sess.graph)
+            solved = False
+            episode_rewards = np.zeros(MAX_EPISODES)
+            average_rewards = -1e3
 
             if env_name == MOUNTAINCAR:
-                state = scaler.transform(state)
-                max_left = max_right = state[0, 0]
+                num_goal_reached = 0
+                scaler = scale_observations(env, state_size)
 
-            while not done:
-                actions_distribution = sess.run(policy.actions_distribution, {policy.state: state})
-                masked_actions_dist = mask_actions(actions_distribution, env_params[env_name]['action_size'])
-                action = np.random.choice(np.arange(len(masked_actions_dist)), p=masked_actions_dist)
+            for episode in range(MAX_EPISODES):
+                episode_loss = 0
+                state, _ = env.reset()
+                state = pad_state(state, state_size)
+                I = 1.0
+                done = False
 
                 if env_name == MOUNTAINCAR:
-                    continuous_action = [MOUNTAINCAR_DISCRETE_TO_CONTINUOUS[action]]
-                    next_state, reward, terminated, truncated, _ = env.step(continuous_action)
-                    next_state = scaler.transform(pad_state(next_state, state_size))
-                else:
-                    next_state, reward, terminated, truncated, _ = env.step(action)
-                    next_state = pad_state(next_state, state_size)
+                    state = scaler.transform(state)
+                    max_left = max_right = state[0, 0]
 
-                done = terminated or truncated
+                while not done:
+                    actions_distribution = sess.run(policy.actions_distribution, {policy.state: state})
+                    masked_actions_dist = mask_actions(actions_distribution, env_params[env_name]['action_size'])
+                    action = np.random.choice(np.arange(len(masked_actions_dist)), p=masked_actions_dist)
 
-                action_one_hot = np.zeros(action_size)
-                action_one_hot[action] = 1
+                    if env_name == MOUNTAINCAR:
+                        continuous_action = [MOUNTAINCAR_DISCRETE_TO_CONTINUOUS[action]]
+                        next_state, reward, terminated, truncated, _ = env.step(continuous_action)
+                        next_state = scaler.transform(pad_state(next_state, state_size))
+                    else:
+                        next_state, reward, terminated, truncated, _ = env.step(action)
+                        next_state = pad_state(next_state, state_size)
 
-                episode_rewards[episode] += reward
+                    done = terminated or truncated
 
-                # Auxiliary rewards per height achieved by the car
-                if env_name == MOUNTAINCAR:
-                    if num_goal_reached < 20:
-                        if reward <= 0:
-                            if next_state[0, 0] < max_left:
-                                reward = (1 + next_state[0, 0]) ** 2
-                                max_left = next_state[0, 0]
+                    action_one_hot = np.zeros(action_size)
+                    action_one_hot[action] = 1
 
-                            if next_state[0, 0] > max_right:
-                                reward = (1 + next_state[0, 0]) ** 2
-                                max_right = next_state[0, 0]
+                    episode_rewards[episode] += reward
 
-                        else:
-                            num_goal_reached += 1
-                            reward += 100
-                            print(f'goal reached {num_goal_reached} times')
+                    # Auxiliary rewards per height achieved by the car
+                    if env_name == MOUNTAINCAR:
+                        if num_goal_reached < 20:
+                            if reward <= 0:
+                                if next_state[0, 0] < max_left:
+                                    reward = (2 + next_state[0, 0]) ** 2
+                                    max_left = next_state[0, 0]
 
-                if env_name == ACROBOT:
-                    reward = (reward - 50) / MAX_ENV_STEPS[ACROBOT]
+                                if next_state[0, 0] > max_right:
+                                    reward = (2 + next_state[0, 0]) ** 2
+                                    max_right = next_state[0, 0]
 
-                if env_name == CARTPOLE:
-                    reward = 1 - reward / MAX_ENV_STEPS[CARTPOLE]
+                            else:
+                                num_goal_reached += 1
+                                reward += 100
+                                print(f'goal reached {num_goal_reached} times')
 
-                feed_dict = {policy.state: state, policy.R_t: reward, policy.action: action_one_hot,
-                             policy.nnext_state: next_state, policy.done: done, policy.I: I}
-                _, _, loss = sess.run([policy.optimizer, policy.value_network_optimizer, policy.loss], feed_dict)
-                episode_loss += loss
-                I = DISCOUNT_FACTOR * I
+                    if env_name == ACROBOT:
+                        reward = (reward - 50) / MAX_ENV_STEPS[ACROBOT]
 
-                if done:
-                    if episode > 98:
-                        # Check if solved
-                        average_rewards = np.mean(episode_rewards[(episode - 99):episode + 1])
-                    print(
-                        "Episode {} Reward: {} Average over 100 episodes: {}".format(episode, episode_rewards[episode],
-                                                                                     round(average_rewards, 2)))
-                if average_rewards >= converge_thresh:
-                    print(' Solved at episode: ' + str(episode))
-                    solved = True
+                    if env_name == CARTPOLE:
+                        reward = 1 - reward / MAX_ENV_STEPS[CARTPOLE]
 
-                state = next_state
+                    feed_dict = {policy.state: state, policy.R_t: reward, policy.action: action_one_hot,
+                                 policy.nnext_state: next_state, policy.done: done, policy.I: I}
+                    _, _, loss = sess.run([policy.optimizer, policy.value_network_optimizer, policy.loss], feed_dict)
+                    episode_loss += loss
+                    I = DISCOUNT_FACTOR * I
 
-            # if problem is solved, i.e. training converged, break out of the episode training loop
-            if solved:
-                break
+                    if done:
+                        if episode > 98:
+                            # Check if solved
+                            average_rewards = np.mean(episode_rewards[(episode - 99):episode + 1])
+                        print(
+                            "Episode {} Reward: {} Average over 100 episodes: {}".format(episode, episode_rewards[episode],
+                                                                                         round(average_rewards, 2)))
+                    if average_rewards >= converge_thresh:
+                        print(' Solved at episode: ' + str(episode))
+                        solved = True
 
-            policy.write_summary(sess, writer, average_rewards, episode_rewards[episode], episode_loss, episode)
+                    state = next_state
 
-        writer.close()
+                # if problem is solved, i.e. training converged, break out of the episode training loop
+                if solved:
+                    break
 
-        if model_path is None:
-            saver.save(sess, os.path.join(BASE_MODEL_PATH, f'{env_name}' + "_model.ckpt"))
+                policy.write_summary(sess, writer, average_rewards, episode_rewards[episode], episode_loss, episode)
+
+            writer.close()
+
+            if model_path is None:
+                saver.save(sess, os.path.join(BASE_MODEL_PATH, f'{env_name}' + "_model.ckpt"))
 
 
 if __name__ == '__main__':
