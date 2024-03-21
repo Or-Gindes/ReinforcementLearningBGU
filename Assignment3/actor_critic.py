@@ -39,6 +39,7 @@ class StateValuesNetwork:
             self.b1 = tf.get_variable("b1", [12], initializer=tf2_initializer)
             self.W2 = tf.get_variable("W2", [12, 1], initializer=tf2_initializer)
             self.b2 = tf.get_variable("b2", [1], initializer=tf2_initializer)
+            self.variables = [self.W1, self.b1, self.W2, self.b2]
 
             self.Z1 = tf.add(tf.matmul(self.state, self.W1), self.b1)
             self.A1 = tf.nn.relu(self.Z1)

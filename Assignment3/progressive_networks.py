@@ -1,5 +1,3 @@
-
-
 import tensorflow.compat.v1 as tf
 from individual_networks import *
 from actor_critic import ActorCritic
@@ -19,20 +17,18 @@ import numpy as np
 #     sess.run(tf.assign(policy.W1, tf.stop_gradient(policy.W1)))
 
 
-
-
 # until here my try
 
 
-    # new_saver = tf.train.import_meta_graph(os.path.join(BASE_MODEL_PATH, "Acrobot-v1_model.ckpt.meta"))
-    # new_saver.restore(sess, tf.train.latest_checkpoint('./'))
+# new_saver = tf.train.import_meta_graph(os.path.join(BASE_MODEL_PATH, "Acrobot-v1_model.ckpt.meta"))
+# new_saver.restore(sess, tf.train.latest_checkpoint('./'))
 
-    # # Initialize variables
-    # sess.run(tf.global_variables_initializer())
-    #
-    # # Restore the model
-    # #saver = tf.train.Saver()
-    # saver.restore(sess, os.path.join(BASE_MODEL_PATH, "Acrobot-v1_model.ckpt"))  # Provide the path to the checkpoint file
+# # Initialize variables
+# sess.run(tf.global_variables_initializer())
+#
+# # Restore the model
+# #saver = tf.train.Saver()
+# saver.restore(sess, os.path.join(BASE_MODEL_PATH, "Acrobot-v1_model.ckpt"))  # Provide the path to the checkpoint file
 
 # sess=tf.Session()
 #
@@ -50,65 +46,65 @@ np.random.seed(1)
 tf.compat.v1.set_random_seed(1)
 
 PROGRESSIVE_SCENARIO1 = {"source1": ACROBOT, "source2": MOUNTAINCAR, "target": CARTPOLE}
-PROGRESSIVE_SCENARIO2 = {"source1": CARTPOLE, "source2": ACROBOT,"target": MOUNTAINCAR}
+PROGRESSIVE_SCENARIO2 = {"source1": CARTPOLE, "source2": ACROBOT, "target": MOUNTAINCAR}
 
-PROGRESSIVE_SCENARIOS = [PROGRESSIVE_SCENARIO1 , PROGRESSIVE_SCENARIO2]
-
-
+PROGRESSIVE_SCENARIOS = [PROGRESSIVE_SCENARIO1, PROGRESSIVE_SCENARIO2]
 
 
 def run():
     for scenario in PROGRESSIVE_SCENARIOS:
-        source1_env_name,source2_env_name, target_env_name = scenario["source1"], scenario["source2"], scenario["target"]
-        train_prog_env(source1_env_name,source2_env_name, target_env_name)
-
-
-
+        source1_env_name, source2_env_name, target_env_name = (scenario["source1"],
+                                                               scenario["source2"],
+                                                               scenario["target"])
+        train_prog_env(source1_env_name, source2_env_name, target_env_name)
+        break
 
 
 def train_prog_env(source1_env_name, source2_env_name, target_env_name):
     target_env = gym.make(target_env_name)
     tf.reset_default_graph()
-    source1_policy = ActorCritic(STANDARDIZED_STATE_SIZE, STANDARDIZED_ACTION_SIZE, 5e-3, 1,source1_env_name)
-    source2_policy = ActorCritic(STANDARDIZED_STATE_SIZE, STANDARDIZED_ACTION_SIZE, 5e-3, 1,source2_env_name)
 
     converge_thresh = CONVERGENCE_THRESHOLD[target_env_name]
-    saver1 = tf.train.Saver(var_list=source1_policy.variables)
 
-    saver2 = tf.train.Saver(var_list=source2_policy.variables)
     # Start training the ActorCritic network
     with tf.Session() as sess:
-        source1_model_path = os.path.join(BASE_MODEL_PATH, f'{source1_env_name}' + "_model.ckpt")
+        with tf.compat.v1.variable_scope(f"{source1_env_name}_model", reuse=False):
+            source1_policy = ActorCritic(STANDARDIZED_STATE_SIZE, STANDARDIZED_ACTION_SIZE, 5e-3, 1)
+            saver1 = tf.train.Saver(var_list=source1_policy.variables + source1_policy.critic.variables)
+            source1_model_path = os.path.join(BASE_MODEL_PATH, f'{source1_env_name}' + "_model.ckpt")
 
-        saver1.restore(sess, source1_model_path)
+            saver1.restore(sess, source1_model_path)
 
-        source2_model_path = os.path.join(BASE_MODEL_PATH, f'{source2_env_name}' + "_model.ckpt")
+            # freeze the gradients of the initial layers in the actor and the critic networks
+            sess.run(tf.assign(source1_policy.W1, tf.stop_gradient(source1_policy.W1)))
+            sess.run(tf.assign(source1_policy.b1, tf.stop_gradient(source1_policy.b1)))
+            sess.run(tf.assign(source1_policy.critic.W1, tf.stop_gradient(source1_policy.critic.W1)))
+            sess.run(tf.assign(source1_policy.critic.b1, tf.stop_gradient(source1_policy.critic.b1)))
 
-        saver2.restore(sess, source2_model_path)
+            sess.run(tf.assign(source1_policy.W2, tf.stop_gradient(source1_policy.W2)))
+            sess.run(tf.assign(source1_policy.b2, tf.stop_gradient(source1_policy.b2)))
+            sess.run(tf.assign(source1_policy.critic.W2, tf.stop_gradient(source1_policy.critic.W2)))
+            sess.run(tf.assign(source1_policy.critic.b2, tf.stop_gradient(source1_policy.critic.b2)))
 
-        # freeze the gradients of the initial layers in the actor and the critic networks
-        sess.run(tf.assign(source1_policy.W1, tf.stop_gradient(source1_policy.W1)))
-        sess.run(tf.assign(source1_policy.b1, tf.stop_gradient(source1_policy.b1)))
-        sess.run(tf.assign(source1_policy.critic.W1, tf.stop_gradient(source1_policy.critic.W1)))
-        sess.run(tf.assign(source1_policy.critic.b1, tf.stop_gradient(source1_policy.critic.b1)))
+        with tf.compat.v1.variable_scope(f"{source2_env_name}_model", reuse=False):
+            source2_policy = ActorCritic(STANDARDIZED_STATE_SIZE, STANDARDIZED_ACTION_SIZE, 5e-3, 1)
+            saver2 = tf.train.Saver(var_list=source2_policy.variables + source2_policy.critic.variables)
 
-        sess.run(tf.assign(source1_policy.W2, tf.stop_gradient(source1_policy.W2)))
-        sess.run(tf.assign(source1_policy.b2, tf.stop_gradient(source1_policy.b2)))
-        sess.run(tf.assign(source1_policy.critic.W2, tf.stop_gradient(source1_policy.critic.W2)))
-        sess.run(tf.assign(source1_policy.critic.b2, tf.stop_gradient(source1_policy.critic.b2)))
+            source2_model_path = os.path.join(BASE_MODEL_PATH, f'{source2_env_name}' + "_model.ckpt")
 
-        ############### ~~~~~~~~~~~~~~~~~~~ ###############
+            saver2.restore(sess, source2_model_path)
 
-        sess.run(tf.assign(source2_policy.W1, tf.stop_gradient(source2_policy.W1)))
-        sess.run(tf.assign(source2_policy.b1, tf.stop_gradient(source2_policy.b1)))
-        sess.run(tf.assign(source2_policy.critic.W1, tf.stop_gradient(source2_policy.critic.W1)))
-        sess.run(tf.assign(source2_policy.critic.b1, tf.stop_gradient(source2_policy.critic.b1)))
+            ############### ~~~~~~~~~~~~~~~~~~~ ###############
 
-        sess.run(tf.assign(source2_policy.W2, tf.stop_gradient(source2_policy.W2)))
-        sess.run(tf.assign(source2_policy.b2, tf.stop_gradient(source2_policy.b2)))
-        sess.run(tf.assign(source2_policy.critic.W2, tf.stop_gradient(source2_policy.critic.W2)))
-        sess.run(tf.assign(source2_policy.critic.b2, tf.stop_gradient(source2_policy.critic.b2)))
+            sess.run(tf.assign(source2_policy.W1, tf.stop_gradient(source2_policy.W1)))
+            sess.run(tf.assign(source2_policy.b1, tf.stop_gradient(source2_policy.b1)))
+            sess.run(tf.assign(source2_policy.critic.W1, tf.stop_gradient(source2_policy.critic.W1)))
+            sess.run(tf.assign(source2_policy.critic.b1, tf.stop_gradient(source2_policy.critic.b1)))
 
+            sess.run(tf.assign(source2_policy.W2, tf.stop_gradient(source2_policy.W2)))
+            sess.run(tf.assign(source2_policy.b2, tf.stop_gradient(source2_policy.b2)))
+            sess.run(tf.assign(source2_policy.critic.W2, tf.stop_gradient(source2_policy.critic.W2)))
+            sess.run(tf.assign(source2_policy.critic.b2, tf.stop_gradient(source2_policy.critic.b2)))
 
         # # re-initialize the output layer weights for the networks
         # tf2_initializer = tf.keras.initializers.glorot_normal(seed=0)
@@ -117,11 +113,10 @@ def train_prog_env(source1_env_name, source2_env_name, target_env_name):
         # sess.run(policy.critic.W2.assign(tf2_initializer(policy.critic.W2.shape)))
         # sess.run(policy.critic.b2.assign(tf.zeros_initializer()(policy.critic.b2.shape)))
 
-        policy = progressiveActorCritic(STANDARDIZED_STATE_SIZE, STANDARDIZED_ACTION_SIZE, 5e-3,source2_policy,source2_policy, 1)
+        policy = progressiveActorCritic(STANDARDIZED_STATE_SIZE, STANDARDIZED_ACTION_SIZE, 5e-3,
+                                        source1_policy, source2_policy, 1)
 
-
-
-        #writer = tf.summary.FileWriter(f"./logs/section2/{source1_env_name}->{target_env_name}", sess.graph)
+        # writer = tf.summary.FileWriter(f"./logs/section2/{source1_env_name}->{target_env_name}", sess.graph)
         solved = False
         episode_rewards = np.zeros(MAX_EPISODES)
         average_rewards = -1e3
@@ -204,12 +199,9 @@ def train_prog_env(source1_env_name, source2_env_name, target_env_name):
             if solved:
                 break
 
-            #policy.write_summary(sess, writer, average_rewards, episode_rewards[episode], episode_loss, episode)
+            # policy.write_summary(sess, writer, average_rewards, episode_rewards[episode], episode_loss, episode)
 
-        #writer.close()
-
-
-
+        # writer.close()
 
 
 def setup_summary():
@@ -257,7 +249,8 @@ class StateValuesNetwork:
 
 
 class progressiveActorCritic:
-    def __init__(self, state_size, action_size, learning_rate,source1_model,source2_model, discount_factor=0.99, name='actor_critic'):
+    def __init__(self, state_size, action_size, learning_rate, source1_model, source2_model, discount_factor=0.99,
+                 name='actor_critic'):
         self.state_size = state_size
         self.action_size = action_size
         self.learning_rate = learning_rate
@@ -291,7 +284,7 @@ class progressiveActorCritic:
 
             self.neg_log_prob = tf.nn.softmax_cross_entropy_with_logits_v2(logits=self.output, labels=self.action)
 
-            self.critic = StateValuesNetwork(self.state_size, self.learning_rate*10, self.state, self.nnext_state,
+            self.critic = StateValuesNetwork(self.state_size, self.learning_rate * 10, self.state, self.nnext_state,
                                              self.done)
             self.delta = self.R_t + (self.discount_factor * self.critic.next_state_output) - self.critic.state_output
             self.loss = tf.reduce_mean(self.neg_log_prob * self.I * tf.stop_gradient(self.delta))
@@ -307,8 +300,6 @@ class progressiveActorCritic:
         summary_str = sess.run(self.summary_op, feed_dict=summary_values)
         writer.add_summary(summary_str, episode)
         writer.flush()
-
-
 
 
 if __name__ == '__main__':
