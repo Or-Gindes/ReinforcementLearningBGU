@@ -6,37 +6,6 @@ import os
 import gymnasium as gym
 import numpy as np
 
-##from here my try
-
-# with tf.Session() as sess:
-#
-#     saver = tf.train.import_meta_graph(os.path.join(BASE_MODEL_PATH, "Acrobot-v1_model.ckpt.meta"))
-#
-#     source_model_path = os.path.join(BASE_MODEL_PATH, 'Acrobot-v1_model.ckpt')
-#     saver.restore(sess, source_model_path)
-#     sess.run(tf.assign(policy.W1, tf.stop_gradient(policy.W1)))
-
-
-# until here my try
-
-
-# new_saver = tf.train.import_meta_graph(os.path.join(BASE_MODEL_PATH, "Acrobot-v1_model.ckpt.meta"))
-# new_saver.restore(sess, tf.train.latest_checkpoint('./'))
-
-# # Initialize variables
-# sess.run(tf.global_variables_initializer())
-#
-# # Restore the model
-# #saver = tf.train.Saver()
-# saver.restore(sess, os.path.join(BASE_MODEL_PATH, "Acrobot-v1_model.ckpt"))  # Provide the path to the checkpoint file
-
-# sess=tf.Session()
-#
-# #First let's load meta graph and restore weights
-# saver = tf.train.import_meta_graph(os.path.join(BASE_MODEL_PATH, "Acrobot-v1_model.ckpt"))
-# saver.restore(sess,tf.train.latest_checkpoint('./'))
-
-
 # optimized for Tf2
 tf.disable_v2_behavior()
 print("tf_ver:{}".format(tf.__version__))
@@ -106,16 +75,21 @@ def train_prog_env(source1_env_name, source2_env_name, target_env_name):
             sess.run(tf.assign(source2_policy.critic.W2, tf.stop_gradient(source2_policy.critic.W2)))
             sess.run(tf.assign(source2_policy.critic.b2, tf.stop_gradient(source2_policy.critic.b2)))
 
-        # # re-initialize the output layer weights for the networks
-        # tf2_initializer = tf.keras.initializers.glorot_normal(seed=0)
-        # sess.run(policy.W2.assign(tf2_initializer(policy.W2.shape)))
-        # sess.run(policy.b2.assign(tf.zeros_initializer()(policy.b2.shape)))
-        # sess.run(policy.critic.W2.assign(tf2_initializer(policy.critic.W2.shape)))
-        # sess.run(policy.critic.b2.assign(tf.zeros_initializer()(policy.critic.b2.shape)))
-
-        policy = progressiveActorCritic(STANDARDIZED_STATE_SIZE, STANDARDIZED_ACTION_SIZE, 5e-3,
-                                        source1_policy, source2_policy, 1)
-
+        progressive_network_name = 'progressive_actor_critic'
+        policy = progressiveActorCritic(
+            state_size=STANDARDIZED_STATE_SIZE,
+            action_size=STANDARDIZED_ACTION_SIZE,
+            learning_rate=5e-3,
+            source1_model=source1_policy,
+            source2_model=source2_policy,
+            discount_factor=1,
+            name=progressive_network_name
+        )
+        # initialize weights for the new progressive policy -
+        progressive_actor_critic_variables = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES,
+                                                               scope=progressive_network_name)
+        progressive_actor_critic_initializer = tf.variables_initializer(progressive_actor_critic_variables)
+        sess.run(progressive_actor_critic_initializer)
         # writer = tf.summary.FileWriter(f"./logs/section2/{source1_env_name}->{target_env_name}", sess.graph)
         solved = False
         episode_rewards = np.zeros(MAX_EPISODES)
@@ -232,6 +206,7 @@ class StateValuesNetwork:
             self.b1 = tf.get_variable("b1", [12], initializer=tf2_initializer)
             self.W2 = tf.get_variable("W2", [12, 1], initializer=tf2_initializer)
             self.b2 = tf.get_variable("b2", [1], initializer=tf2_initializer)
+            self.variables = [self.W1, self.b1, self.W2, self.b2]
 
             self.Z1 = tf.add(tf.matmul(self.state, self.W1), self.b1)
             self.A1 = tf.nn.relu(self.Z1)
@@ -250,7 +225,7 @@ class StateValuesNetwork:
 
 class progressiveActorCritic:
     def __init__(self, state_size, action_size, learning_rate, source1_model, source2_model, discount_factor=0.99,
-                 name='actor_critic'):
+                 name='progressive_actor_critic'):
         self.state_size = state_size
         self.action_size = action_size
         self.learning_rate = learning_rate
@@ -271,6 +246,7 @@ class progressiveActorCritic:
             self.b1 = tf.get_variable("b1", [32], initializer=tf2_initializer)
             self.W2 = tf.get_variable("W2", [32, self.action_size], initializer=tf2_initializer)
             self.b2 = tf.get_variable("b2", [self.action_size], initializer=tf2_initializer)
+            self.variables = [self.W1, self.b1, self.W2, self.b2]
 
             self.Z1 = tf.add(tf.matmul(self.state, self.W1), self.b1)
             self.A1 = tf.nn.relu(self.Z1)

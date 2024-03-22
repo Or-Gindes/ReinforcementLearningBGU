@@ -25,7 +25,7 @@ def run():
 def fine_tune(source_env_name, target_env_name):
     target_env = gym.make(target_env_name)
     tf.reset_default_graph()
-    with tf.compat.v1.variable_scope(f"{env_name}_model"):
+    with tf.compat.v1.variable_scope(f"{source_env_name}_model"):
         policy = ActorCritic(STANDARDIZED_STATE_SIZE, STANDARDIZED_ACTION_SIZE, 5e-3, 1)
 
         converge_thresh = CONVERGENCE_THRESHOLD[target_env_name]
