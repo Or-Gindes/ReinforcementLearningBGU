@@ -250,11 +250,17 @@ class progressiveActorCritic:
 
             self.Z1 = tf.add(tf.matmul(self.state, self.W1), self.b1)
             self.A1 = tf.nn.relu(self.Z1)
-            concatenated_hidden = tf.concat([source1_model.A1, source2_model.A1], axis=1)
 
+            # concatenated_hidden = tf.concat([source1_model.A1, source2_model.A1], axis=1)
+            concatenated_hidden = tf.add(source1_model.A1, source2_model.A1)
+            self.A1 = tf.add(concatenated_hidden, self.A1)
             self.output = tf.add(tf.matmul(self.A1, self.W2), self.b2)
 
-            self.output = tf.concat([concatenated_hidden, self.output], axis=1)
+            # concatenated_hidden = tf.concat([source1_model.A1, source2_model.A1], axis=1)
+            #
+            # self.output = tf.add(tf.matmul(self.A1, self.W2), self.b2)
+            #
+            # self.output = tf.concat([concatenated_hidden, self.output], axis=1)
             # Softmax probability distribution over actions
             self.actions_distribution = tf.squeeze(tf.nn.softmax(self.output))
 
