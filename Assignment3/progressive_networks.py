@@ -2,7 +2,7 @@ import tensorflow.compat.v1 as tf
 from individual_networks import *
 from actor_critic import ActorCritic
 import os
-
+import matplotlib.pyplot as plt
 import gymnasium as gym
 import numpy as np
 
@@ -26,7 +26,6 @@ def run():
                                                                scenario["source2"],
                                                                scenario["target"])
         train_prog_env(source1_env_name, source2_env_name, target_env_name)
-        break
 
 
 def train_prog_env(source1_env_name, source2_env_name, target_env_name):
@@ -79,7 +78,7 @@ def train_prog_env(source1_env_name, source2_env_name, target_env_name):
         policy = progressiveActorCritic(
             state_size=STANDARDIZED_STATE_SIZE,
             action_size=STANDARDIZED_ACTION_SIZE,
-            learning_rate=5e-3,
+            learning_rate=5e-4,
             source1_model=source1_policy,
             source2_model=source2_policy,
             discount_factor=1,
@@ -90,7 +89,6 @@ def train_prog_env(source1_env_name, source2_env_name, target_env_name):
                                                                scope=progressive_network_name)
         progressive_actor_critic_initializer = tf.variables_initializer(progressive_actor_critic_variables)
         sess.run(progressive_actor_critic_initializer)
-        # writer = tf.summary.FileWriter(f"./logs/section2/{source1_env_name}->{target_env_name}", sess.graph)
         solved = False
         episode_rewards = np.zeros(MAX_EPISODES)
         average_rewards = -1e3
@@ -111,7 +109,14 @@ def train_prog_env(source1_env_name, source2_env_name, target_env_name):
                 max_left = max_right = state[0, 0]
 
             while not done:
-                actions_distribution = sess.run(policy.actions_distribution, {policy.state: state})
+                actions_distribution = sess.run(
+                    policy.actions_distribution,
+                    {
+                        policy.state: state,
+                        source1_policy.state: state,
+                        source2_policy.state: state
+                    }
+                )
                 masked_actions_dist = mask_actions(actions_distribution, ENV_PARAMS[target_env_name]['action_size'])
                 action = np.random.choice(np.arange(len(masked_actions_dist)), p=masked_actions_dist)
 
@@ -148,10 +153,15 @@ def train_prog_env(source1_env_name, source2_env_name, target_env_name):
                             print(f'goal reached {num_goal_reached} times')
 
                 if target_env_name == CARTPOLE:
-                    reward = 1 - reward / MAX_ENV_STEPS[CARTPOLE]
+                    reward = 1 - episode_rewards[episode] / MAX_ENV_STEPS[CARTPOLE]
 
-                feed_dict = {policy.state: state, policy.R_t: reward, policy.action: action_one_hot,
-                             policy.nnext_state: next_state, policy.done: done, policy.I: I}
+                feed_dicts_list = [{
+                    network.state: state, network.R_t: reward, network.action: action_one_hot,
+                    network.nnext_state: next_state, network.done: done, network.I: I
+                } for network in [policy, source1_policy, source2_policy]]
+
+                feed_dict = {key: value for d in feed_dicts_list for key, value in d.items()}
+
                 _, _, loss = sess.run([policy.optimizer, policy.value_network_optimizer, policy.loss], feed_dict)
                 episode_loss += loss
                 I = DISCOUNT_FACTOR * I
@@ -172,24 +182,6 @@ def train_prog_env(source1_env_name, source2_env_name, target_env_name):
             # if problem is solved, i.e. training converged, break out of the episode training loop
             if solved:
                 break
-
-            # policy.write_summary(sess, writer, average_rewards, episode_rewards[episode], episode_loss, episode)
-
-        # writer.close()
-
-
-def setup_summary():
-    episode_avg_reward = tf.Variable(0.)
-    episode_loss = tf.Variable(0.)
-    episode_reward = tf.Variable(0.)
-    tf.summary.scalar("average reward over 100 episodes", episode_avg_reward)
-    tf.summary.scalar("episode reward", episode_reward)
-    tf.summary.scalar("episode loss", episode_loss)
-    summary_vars = [episode_avg_reward, episode_reward, episode_loss]
-    summary_placeholders = [tf.placeholder(tf.float32) for _ in range(len(summary_vars))]
-    update_ops = [summary_vars[i].assign(summary_placeholders[i]) for i in range(len(summary_vars))]
-    summary_op = tf.summary.merge_all()
-    return summary_placeholders, update_ops, summary_op
 
 
 class StateValuesNetwork:
@@ -230,7 +222,6 @@ class progressiveActorCritic:
         self.action_size = action_size
         self.learning_rate = learning_rate
         self.discount_factor = discount_factor
-        self.summary_placeholders, self.update_ops, self.summary_op = setup_summary()
 
         with tf.variable_scope(name):
             self.state = tf.placeholder(tf.float32, [None, self.state_size], name="state")
@@ -251,16 +242,10 @@ class progressiveActorCritic:
             self.Z1 = tf.add(tf.matmul(self.state, self.W1), self.b1)
             self.A1 = tf.nn.relu(self.Z1)
 
-            # concatenated_hidden = tf.concat([source1_model.A1, source2_model.A1], axis=1)
             concatenated_hidden = tf.add(source1_model.A1, source2_model.A1)
             self.A1 = tf.add(concatenated_hidden, self.A1)
             self.output = tf.add(tf.matmul(self.A1, self.W2), self.b2)
 
-            # concatenated_hidden = tf.concat([source1_model.A1, source2_model.A1], axis=1)
-            #
-            # self.output = tf.add(tf.matmul(self.A1, self.W2), self.b2)
-            #
-            # self.output = tf.concat([concatenated_hidden, self.output], axis=1)
             # Softmax probability distribution over actions
             self.actions_distribution = tf.squeeze(tf.nn.softmax(self.output))
 
@@ -274,14 +259,6 @@ class progressiveActorCritic:
 
             # Loss with negative log probability
             self.optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate).minimize(self.loss)
-
-    def write_summary(self, sess, writer, avg_episode_reward, episode_reward, episode_loss, episode):
-        summary_values = {self.summary_placeholders[0]: avg_episode_reward,
-                          self.summary_placeholders[1]: episode_reward, self.summary_placeholders[2]: episode_loss}
-        sess.run(self.update_ops, feed_dict=summary_values)
-        summary_str = sess.run(self.summary_op, feed_dict=summary_values)
-        writer.add_summary(summary_str, episode)
-        writer.flush()
 
 
 if __name__ == '__main__':
