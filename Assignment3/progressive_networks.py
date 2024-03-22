@@ -91,6 +91,8 @@ def train_prog_env(source1_env_name, source2_env_name, target_env_name):
         sess.run(progressive_actor_critic_initializer)
         solved = False
         episode_rewards = np.zeros(MAX_EPISODES)
+        episode_average_rewards = np.zeros(MAX_EPISODES)
+        episode_losses = np.zeros(MAX_EPISODES)
         average_rewards = -1e3
 
         if target_env_name == MOUNTAINCAR:
@@ -98,7 +100,6 @@ def train_prog_env(source1_env_name, source2_env_name, target_env_name):
             scaler = scale_observations(target_env, STANDARDIZED_STATE_SIZE)
 
         for episode in range(MAX_EPISODES):
-            episode_loss = 0
             state, _ = target_env.reset()
             state = pad_state(state, STANDARDIZED_STATE_SIZE)
             I = 1.0
@@ -153,7 +154,7 @@ def train_prog_env(source1_env_name, source2_env_name, target_env_name):
                             print(f'goal reached {num_goal_reached} times')
 
                 if target_env_name == CARTPOLE:
-                    reward = 1 - episode_rewards[episode] / MAX_ENV_STEPS[CARTPOLE]
+                    reward = 1 - reward / MAX_ENV_STEPS[CARTPOLE]
 
                 feed_dicts_list = [{
                     network.state: state, network.R_t: reward, network.action: action_one_hot,
@@ -163,13 +164,14 @@ def train_prog_env(source1_env_name, source2_env_name, target_env_name):
                 feed_dict = {key: value for d in feed_dicts_list for key, value in d.items()}
 
                 _, _, loss = sess.run([policy.optimizer, policy.value_network_optimizer, policy.loss], feed_dict)
-                episode_loss += loss
+                episode_losses[episode] += loss
                 I = DISCOUNT_FACTOR * I
 
                 if done:
                     if episode > 98:
                         # Check if solved
                         average_rewards = np.mean(episode_rewards[(episode - 99):episode + 1])
+                        episode_average_rewards[episode] = average_rewards
                     print(
                         "Episode {} Reward: {} Average over 100 episodes: {}".format(episode, episode_rewards[episode],
                                                                                      round(average_rewards, 2)))
@@ -182,6 +184,7 @@ def train_prog_env(source1_env_name, source2_env_name, target_env_name):
             # if problem is solved, i.e. training converged, break out of the episode training loop
             if solved:
                 break
+    plot_training_graphs(episode_average_rewards, episode_rewards, episode_losses, target_env_name, episode)
 
 
 class StateValuesNetwork:
@@ -259,6 +262,37 @@ class progressiveActorCritic:
 
             # Loss with negative log probability
             self.optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate).minimize(self.loss)
+
+
+def plot_training_graphs(average_rewards, episode_rewards, episode_losses, target_env_name, episode_solved):
+    results_dir = os.path.join(os.getcwd(), 'logs', 'section3', target_env_name)
+
+    if not os.path.exists(results_dir):
+        os.mkdir(results_dir)
+
+    figsize = (12, 8)
+    # Plot losses
+    plt.figure(figsize=figsize)
+    plt.plot(range(len(episode_solved)), episode_losses[:episode_solved])
+    plt.title("episode_loss")
+    plt.savefig(os.path.join(results_dir, f"Losses_per_Episode.png"))
+    plt.clf()
+
+    # Plot rewards
+    plt.figure(figsize=figsize)
+    plt.plot(range(len(episode_solved)), episode_rewards[:episode_solved])
+
+    plt.title("episode_reward")
+    plt.savefig(os.path.join(results_dir, f"Rewards_per_Episode.png"))
+    plt.clf()
+
+    # Plot rewards
+    plt.figure(figsize=figsize)
+    plt.plot(range(len(episode_solved)), average_rewards[:episode_solved])
+
+    plt.title("average_rward_over_100_episodes")
+    plt.savefig(os.path.join(results_dir, f"Average_Rewards_per_Episode.png"))
+    plt.clf()
 
 
 if __name__ == '__main__':
